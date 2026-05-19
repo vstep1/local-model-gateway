@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="560" viewBox="0 0 1040 560" role="img" aria-labelledby="title desc">
+  <title id="title">Local AI Gateway terminal demo</title>
+  <desc id="desc">A terminal-style preview showing local-ai-gateway doctor, status, model discovery, and managed runtime queue state.</desc>
+  <defs>
+    <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#101820"/>
+      <stop offset="100%" stop-color="#1d2733"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#071018" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect width="1040" height="560" rx="18" fill="#eef2f7"/>
+  <rect x="56" y="46" width="928" height="468" rx="14" fill="url(#frame)" filter="url(#shadow)"/>
+  <rect x="56" y="46" width="928" height="44" rx="14" fill="#263241"/>
+  <circle cx="84" cy="68" r="7" fill="#f87171"/>
+  <circle cx="108" cy="68" r="7" fill="#fbbf24"/>
+  <circle cx="132" cy="68" r="7" fill="#34d399"/>
+  <text x="520" y="73" text-anchor="middle" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">local-ai-gateway</text>
+
+  <text x="86" y="128" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">
+    <tspan fill="#93c5fd">$</tspan>
+    <tspan> npx local-ai-gateway doctor</tspan>
+  </text>
+  <text x="86" y="166" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
+    <tspan fill="#86efac">ok</tspan><tspan>    Node.js runtime</tspan>
+  </text>
+  <text x="86" y="196" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
+    <tspan fill="#86efac">ok</tspan><tspan>    Config file parsed</tspan>
+  </text>
+  <text x="86" y="226" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
+    <tspan fill="#fde68a">warn</tspan><tspan>  Runtime health currently reachable for minimax-m2.7</tspan>
+  </text>
+  <text x="86" y="256" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">
+    <tspan>      note: fine while unloaded; the gateway starts it on demand</tspan>
+  </text>
+
+  <text x="86" y="308" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">
+    <tspan fill="#93c5fd">$</tspan>
+    <tspan> curl 127.0.0.1:8787/status</tspan>
+  </text>
+  <rect x="86" y="332" width="868" height="132" rx="8" fill="#111827" stroke="#334155"/>
+  <text x="112" y="366" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
+    <tspan>{ "loaded_model": </tspan><tspan fill="#86efac">"qwen3-32b"</tspan><tspan>, "loading_model": null,</tspan>
+  </text>
+  <text x="112" y="398" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
+    <tspan>  "gpu_queue": [</tspan><tspan fill="#93c5fd">OpenAI</tspan><tspan>, </tspan><tspan fill="#c4b5fd">MCP</tspan><tspan>],</tspan>
+  </text>
+  <text x="112" y="430" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
+    <tspan>  "policy": </tspan><tspan fill="#fcd34d">"priority, FIFO, no active interrupts"</tspan><tspan> }</tspan>
+  </text>
+
+  <text x="86" y="498" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">
+    OpenAI-compatible HTTP + MCP Streamable HTTP + SQLite GPU residency coordinator
+  </text>
+</svg>

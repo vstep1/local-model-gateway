@@ -14,6 +14,8 @@ for Qwen, MiniMax, a LoRA job, or another local runtime through the same gateway
 without racing each other, double-loading models, or bypassing load/unload
 decisions.
 
+![Terminal demo showing Local AI Gateway doctor and status output](docs/assets/terminal-demo.svg)
+
 ## Why This Exists
 
 Local models are easy to start and hard to coordinate.

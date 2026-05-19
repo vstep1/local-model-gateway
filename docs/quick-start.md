@@ -14,3 +14,10 @@ coordinator independent of Hermes, Continue, Claude Desktop, or any other agent.
 dependencies, config parsing, service scripts, and port availability before the
 user starts the gateway.
 
+Doctor output uses three statuses:
+
+- `ok`: ready.
+- `warn`: actionable context, but not a startup blocker. For example, an enabled
+  runtime health URL may be unreachable because the runtime is currently
+  unloaded and will be started on demand.
+- `fail`: fix before expecting the gateway or runtime to work.
