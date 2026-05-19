@@ -8,7 +8,6 @@ import { startGateway } from '@local-model-gateway/gateway';
 function usage(): string {
   return [
     'Usage: local-model-gateway <command>',
-    '       local-ai-gateway <command>  # compatibility alias',
     '',
     'Commands:',
     '  init',

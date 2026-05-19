@@ -174,7 +174,7 @@ async function createSchedulerHarness(
   coordinator: GpuCoordinator;
   scheduler: Scheduler;
 }> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-ai-coordinator-scheduler-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-coordinator-scheduler-'));
   const dataDir = path.join(root, 'data');
   const modelsDir = path.join(root, 'models');
   const sourceDir = path.join(root, 'source');

@@ -5,8 +5,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "local-model-gateway": "dist/src/index.js",
-    "local-ai-gateway": "dist/src/index.js"
+    "local-model-gateway": "dist/src/index.js"
   },
   "files": [
     "dist",

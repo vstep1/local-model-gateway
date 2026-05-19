@@ -13,16 +13,6 @@ const ENV_KEYS = [
   'LOCAL_MODEL_GATEWAY_MANAGED_RUNTIMES',
   'LOCAL_MODEL_GATEWAY_ALLOW_UNMANAGED_LOCAL_UPSTREAMS',
   'LOCAL_MODEL_GATEWAY_AUTH_TOKEN',
-  'LOCAL_AI_GATEWAY_CONFIG',
-  'LOCAL_AI_GATEWAY_HOST',
-  'LOCAL_AI_GATEWAY_PORT',
-  'LOCAL_AI_GATEWAY_OPENAI_UPSTREAMS',
-  'LOCAL_AI_GATEWAY_MANAGED_RUNTIMES',
-  'LOCAL_AI_GATEWAY_ALLOW_UNMANAGED_LOCAL_UPSTREAMS',
-  'LOCAL_AI_GATEWAY_AUTH_TOKEN',
-  'LOCAL_GPU_GATEWAY_OPENAI_UPSTREAMS',
-  'LOCAL_GPU_GATEWAY_MANAGED_RUNTIMES',
-  'LOCAL_GPU_GATEWAY_ALLOW_UNMANAGED_LOCAL_UPSTREAMS',
 ];
 
 async function withEnv<T>(values: Record<string, string | undefined>, fn: () => T | Promise<T>): Promise<T> {
@@ -92,28 +82,6 @@ describe('gateway config', () => {
       assert.deepEqual(config.startupModels, { ep2: path.join(root, 'models/ep2.gguf') });
       assert.equal(config.managedRuntimes[0].serviceScript, path.join(root, 'runtime/qwen.sh'));
       assert.equal(config.managedRuntimes[0].contextWindow, 131072);
-    });
-  });
-
-  it('keeps the old local-ai config filename and env prefix as compatibility fallbacks', async () => {
-    await withEnv({ LOCAL_AI_GATEWAY_PORT: '9998' }, async () => {
-      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-gateway-compat-config-'));
-      await fs.writeFile(
-        path.join(root, 'local-ai-gateway.config.yaml'),
-        [
-          'server:',
-          '  host: 127.0.0.1',
-          '  port: 8787',
-          'paths:',
-          '  data_dir: ./state',
-        ].join('\n'),
-        'utf8',
-      );
-
-      const config = resolveGatewayConfig({ rootDir: root });
-      assert.equal(config.configPath, path.join(root, 'local-ai-gateway.config.yaml'));
-      assert.equal(config.port, 9998);
-      assert.equal(config.dataDir, path.join(root, 'state'));
     });
   });
 

@@ -192,8 +192,7 @@ export async function startGateway(): Promise<void> {
   app.use('*', async (c, next) => {
     if (
       c.req.path === '/health' ||
-      c.req.path === '/.well-known/local-model-gateway.json' ||
-      c.req.path === '/.well-known/local-ai-gateway.json'
+      c.req.path === '/.well-known/local-model-gateway.json'
     ) {
       await next();
       return;
@@ -217,9 +216,6 @@ export async function startGateway(): Promise<void> {
   );
 
   app.get('/.well-known/local-model-gateway.json', async (c) => c.json(
-    discoveryManifest(config, activeSettings, registry, upstreamPool, gpuCoordinator),
-  ));
-  app.get('/.well-known/local-ai-gateway.json', async (c) => c.json(
     discoveryManifest(config, activeSettings, registry, upstreamPool, gpuCoordinator),
   ));
 

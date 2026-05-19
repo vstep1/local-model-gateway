@@ -8,7 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="$(basename "${BASH_SOURCE[0]}" .sh)"
-ENV_FILE="${LOCAL_MODEL_GATEWAY_RUNTIME_ENV:-${LOCAL_AI_GATEWAY_RUNTIME_ENV:-${LOCAL_GPU_GATEWAY_RUNTIME_ENV:-${SCRIPT_DIR}/${SERVICE_NAME}.env}}}"
+ENV_FILE="${LOCAL_MODEL_GATEWAY_RUNTIME_ENV:-${SCRIPT_DIR}/${SERVICE_NAME}.env}"
 
 if [[ -f "${ENV_FILE}" ]]; then
   # shellcheck disable=SC1090
