@@ -14,15 +14,13 @@ for Qwen, MiniMax, a LoRA job, or another local runtime through the same gateway
 without racing each other, double-loading models, or bypassing load/unload
 decisions.
 
-![Terminal demo showing Local Model Gateway doctor and status output](docs/assets/terminal-demo.svg)
-
 ## Demo
 
 Watch a 58-second demo of multiple local clients sharing one OpenAI-compatible
 endpoint while the gateway queues requests, swaps model residency, and keeps
 active work uninterrupted:
 
-<video src="docs/assets/local-model-gateway-cli-demo.mp4" controls playsinline width="100%" aria-label="Local Model Gateway demo"></video>
+https://github.com/user-attachments/assets/d48e4422-46f5-4355-bfa3-7a964bde9a6b
 
 [Open the MP4 demo directly](docs/assets/local-model-gateway-cli-demo.mp4).
 
