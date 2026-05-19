@@ -22,8 +22,6 @@ active work uninterrupted:
 
 https://github.com/user-attachments/assets/d48e4422-46f5-4355-bfa3-7a964bde9a6b
 
-[Open the MP4 demo directly](docs/assets/local-model-gateway-cli-demo.mp4).
-
 ## Why This Exists
 
 Local models are easy to start and hard to coordinate.
