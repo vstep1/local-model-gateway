@@ -16,6 +16,8 @@ decisions.
 
 ![Terminal demo showing Local Model Gateway doctor and status output](docs/assets/terminal-demo.svg)
 
+[Watch the 21-second MP4 demo](docs/assets/local-model-gateway-demo.mp4).
+
 ## Why This Exists
 
 Local models are easy to start and hard to coordinate.
