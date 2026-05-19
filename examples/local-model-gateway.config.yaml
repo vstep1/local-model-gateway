@@ -1,0 +1,63 @@
+server:
+  host: 127.0.0.1
+  port: 8787
+
+paths:
+  data_dir: ./data
+  db_path: ./data/gateway.sqlite
+  models_dir: ./models
+  model_source_dir: ./runtime/model-source
+  llama_cli: llama-cli
+  base_model_path: ./runtime/base.gguf
+
+default_model: ep2
+startup_models: {}
+
+queue:
+  max_queue: 100
+  max_queue_wait_ms: 300000
+  history_ttl_days: 7
+
+generation:
+  ctx_size: 4096
+  max_tokens: 360
+  temperature: 0.8
+  top_p: 0.95
+  repeat_penalty: 1.0
+  gpu_layers: all
+
+allow_unmanaged_local_upstreams: false
+
+runtimes:
+  qwen3-32b:
+    enabled: false
+    base_url: http://127.0.0.1:18001/v1
+    health_url: http://127.0.0.1:18001/v1/models
+    service_script: ./runtime-adapters/qwen3-32b-service.sh
+    start_args: [start]
+    stop_args: [stop]
+    idle_ttl_ms: 600000
+    load_timeout_ms: 900000
+    max_concurrency: 1
+    upstream_model: qwen3-32b
+    context_window: 131072
+    recommended_prompt_budget: 98304
+    supports_streaming: true
+    supports_reasoning: false
+  minimax-m2.7:
+    enabled: false
+    base_url: http://127.0.0.1:8000/v1
+    health_url: http://127.0.0.1:8000/v1/models
+    service_script: ./runtime-adapters/minimax-m27-service.sh
+    start_args: [start]
+    stop_args: [stop]
+    idle_ttl_ms: 3600000
+    load_timeout_ms: 1800000
+    max_concurrency: 1
+    upstream_model: MiniMaxAI/MiniMax-M2.7
+    context_window: 98304
+    recommended_prompt_budget: 65536
+    supports_streaming: true
+    supports_reasoning: true
+
+openai_upstreams: []

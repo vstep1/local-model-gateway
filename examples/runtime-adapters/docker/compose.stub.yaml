@@ -7,11 +7,11 @@ services:
       - "127.0.0.1:8787:8787"
     volumes:
       - ../..:/workspace:ro
-      - local-ai-gateway-data:/workspace/data
-      - local-ai-gateway-models:/workspace/models
+      - local-model-gateway-data:/workspace/data
+      - local-model-gateway-models:/workspace/models
     environment:
-      LOCAL_AI_GATEWAY_HOST: 0.0.0.0
-      LOCAL_AI_GATEWAY_AUTH_TOKEN: change-me
+      LOCAL_MODEL_GATEWAY_HOST: 0.0.0.0
+      LOCAL_MODEL_GATEWAY_AUTH_TOKEN: change-me
 
   qwen3-32b:
     image: ghcr.io/ggerganov/llama.cpp:server
@@ -33,5 +33,5 @@ services:
       - "131072"
 
 volumes:
-  local-ai-gateway-data:
-  local-ai-gateway-models:
+  local-model-gateway-data:
+  local-model-gateway-models:

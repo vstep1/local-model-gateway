@@ -25,8 +25,11 @@ logs/
 .env
 .env.*
 !/.env.example
+local-model-gateway.config.yaml
+local-model-gateway.config.yml
 local-ai-gateway.config.yaml
 local-ai-gateway.config.yml
+!examples/local-model-gateway.config.yaml
 
 # OS/editor
 .DS_Store

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import YAML from 'yaml';
-import { DEFAULT_CONFIG_FILE } from '@local-ai-gateway/core';
+import { DEFAULT_CONFIG_FILE } from '@local-model-gateway/core';
 
 export interface EnvironmentInfo {
   arch: string;

@@ -1,10 +1,10 @@
 import { FastMCP, UserError } from 'fastmcp';
 import { z } from 'zod';
-import { GatewayStore } from '@local-ai-gateway/core';
-import { GpuCoordinator } from '@local-ai-gateway/core';
-import { ModelRegistry } from '@local-ai-gateway/core';
-import { Scheduler } from '@local-ai-gateway/core';
-import type { GatewayConfig, JobState } from '@local-ai-gateway/core';
+import { GatewayStore } from '@local-model-gateway/core';
+import { GpuCoordinator } from '@local-model-gateway/core';
+import { ModelRegistry } from '@local-model-gateway/core';
+import { Scheduler } from '@local-model-gateway/core';
+import type { GatewayConfig, JobState } from '@local-model-gateway/core';
 
 const stateSchema = z
   .enum(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out'])
@@ -32,7 +32,7 @@ export function clientRecipe(
     return {
       kind,
       openai_base_url: openAiBaseUrl,
-      ['api_key']: 'local-ai-gateway',
+      ['api_key']: 'local-model-gateway',
       model_source: 'GET /v1/models',
     };
   }
@@ -49,10 +49,10 @@ export function clientRecipe(
       type: 'custom',
       base_url: openAiBaseUrl,
       api_mode: 'chat_completions',
-      ['api_key']: 'local-ai-gateway',
+      ['api_key']: 'local-model-gateway',
     },
     mcp_servers: {
-      'local-ai-gateway': {
+      'local-model-gateway': {
         url: mcpUrl,
         transport: 'httpStream',
       },

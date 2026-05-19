@@ -1,5 +1,5 @@
-# @local-ai-gateway/core
+# @local-model-gateway/core
 
 Core SQLite queue, model registry, runtime coordinator, config loader, and
-OpenAI upstream proxy helpers for Local AI Gateway.
+OpenAI upstream proxy helpers for Local Model Gateway.
 

@@ -1,7 +1,7 @@
 {
-  "name": "@local-ai-gateway/core",
+  "name": "@local-model-gateway/core",
   "version": "0.1.0",
-  "description": "Core SQLite queue, runtime coordinator, and config primitives for Local AI Gateway.",
+  "description": "Core SQLite queue, runtime coordinator, and config primitives for Local Model Gateway.",
   "license": "MIT",
   "type": "module",
   "main": "dist/src/index.js",

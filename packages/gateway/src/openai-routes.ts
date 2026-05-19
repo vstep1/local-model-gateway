@@ -1,10 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { Scheduler } from '@local-ai-gateway/core';
-import type { ActiveRuntimeSettings, ChatMessage, JobRecord } from '@local-ai-gateway/core';
-import { compilePromptFromMessages, parseResponsesInputToMessages } from '@local-ai-gateway/core';
-import { OpenAiUpstreamPool } from '@local-ai-gateway/core';
-import { GpuCoordinator } from '@local-ai-gateway/core';
+import { Scheduler } from '@local-model-gateway/core';
+import type { ActiveRuntimeSettings, ChatMessage, JobRecord } from '@local-model-gateway/core';
+import { compilePromptFromMessages, parseResponsesInputToMessages } from '@local-model-gateway/core';
+import { OpenAiUpstreamPool } from '@local-model-gateway/core';
+import { GpuCoordinator } from '@local-model-gateway/core';
 
 const chatSchema = z
   .object({
@@ -132,7 +132,7 @@ export function registerOpenAiRoutes(
       id: alias,
       object: 'model',
       created: 0,
-      owned_by: 'local-ai-gateway',
+      owned_by: 'local-model-gateway',
     }));
 
     return Response.json({ object: 'list', data });

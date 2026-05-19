@@ -88,7 +88,7 @@ async function createHarness(maxQueue = 100): Promise<{
   settings: ActiveRuntimeSettings;
   store: GatewayStore;
 }> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-ai-gateway-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-gateway-'));
   const dataDir = path.join(root, 'data');
   const modelsDir = path.join(root, 'models');
   const sourceDir = path.join(root, 'source');

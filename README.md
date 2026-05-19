@@ -1,11 +1,11 @@
-# Local AI Gateway
+# Local Model Gateway
 
-[![CI](https://github.com/vstep1/local-ai-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/vstep1/local-ai-gateway/actions/workflows/ci.yml)
+[![CI](https://github.com/vstep1/local-model-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/vstep1/local-model-gateway/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](package.json)
 [![Protocols](https://img.shields.io/badge/protocols-OpenAI%20%2B%20MCP-purple.svg)](#protocols)
 
-Local AI Gateway is a local-first control plane for running agent workloads on
+Local Model Gateway is a local-first control plane for running agent workloads on
 one workstation GPU.
 
 It exposes a stable OpenAI-compatible API and a Streamable HTTP MCP endpoint,
@@ -14,7 +14,7 @@ for Qwen, MiniMax, a LoRA job, or another local runtime through the same gateway
 without racing each other, double-loading models, or bypassing load/unload
 decisions.
 
-![Terminal demo showing Local AI Gateway doctor and status output](docs/assets/terminal-demo.svg)
+![Terminal demo showing Local Model Gateway doctor and status output](docs/assets/terminal-demo.svg)
 
 ## Why This Exists
 
@@ -31,7 +31,7 @@ that breaks down quickly:
 - loading every MCP tool schema into an agent prompt wastes context before the
   user asks for any tool
 
-Local AI Gateway gives those moving parts one admission layer.
+Local Model Gateway gives those moving parts one admission layer.
 
 ## What You Get
 
@@ -43,13 +43,13 @@ Local AI Gateway gives those moving parts one admission layer.
 | Runtime residency | Starts, health-checks, unloads, and swaps managed local runtimes on demand. |
 | Launch adapters | macOS launchd and generic shell helpers now, with systemd/Docker planned. |
 | Lazy MCP broker | Keeps downstream MCP catalogs out of the prompt until a tool is actually searched or described. |
-| Discovery manifest | `/.well-known/local-ai-gateway.json` for clients that want model, timeout, and endpoint hints. |
+| Discovery manifest | `/.well-known/local-model-gateway.json` for clients that want model, timeout, and endpoint hints. |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  A["Agent or app"] -->|"OpenAI-compatible HTTP"| G["Local AI Gateway"]
+  A["Agent or app"] -->|"OpenAI-compatible HTTP"| G["Local Model Gateway"]
   A -->|"MCP Streamable HTTP"| G
   G --> Q["SQLite gpu_work_items queue"]
   Q --> C["GpuCoordinator"]
@@ -69,8 +69,8 @@ coordinator. OpenAI URL requests, MCP `submit_job` requests, and exclusive
 Source install:
 
 ```bash
-git clone https://github.com/vstep1/local-ai-gateway.git
-cd local-ai-gateway
+git clone https://github.com/vstep1/local-model-gateway.git
+cd local-model-gateway
 npm install
 npm run build
 ```
@@ -78,14 +78,14 @@ npm run build
 Create a local config and run the first diagnostic:
 
 ```bash
-npx local-ai-gateway init
-npx local-ai-gateway doctor
+npx local-model-gateway init
+npx local-model-gateway doctor
 ```
 
 Start the gateway:
 
 ```bash
-npx local-ai-gateway start
+npx local-model-gateway start
 ```
 
 Default endpoints:
@@ -95,7 +95,7 @@ Default endpoints:
 | OpenAI-compatible API | `http://127.0.0.1:8787/v1` |
 | MCP Streamable HTTP | `http://127.0.0.1:8787/mcp` |
 | Status | `http://127.0.0.1:8787/status` |
-| Discovery manifest | `http://127.0.0.1:8787/.well-known/local-ai-gateway.json` |
+| Discovery manifest | `http://127.0.0.1:8787/.well-known/local-model-gateway.json` |
 
 Smoke check:
 
@@ -103,7 +103,7 @@ Smoke check:
 curl http://127.0.0.1:8787/health
 curl http://127.0.0.1:8787/status
 curl http://127.0.0.1:8787/v1/models
-curl http://127.0.0.1:8787/.well-known/local-ai-gateway.json
+curl http://127.0.0.1:8787/.well-known/local-model-gateway.json
 ```
 
 Fresh configs do not enable heavyweight runtimes automatically. `qwen3-32b` and
@@ -118,7 +118,7 @@ Point any OpenAI-compatible client at:
 
 ```text
 base_url: http://127.0.0.1:8787/v1
-api_key: local-ai-gateway
+api_key: local-model-gateway
 model: one of GET /v1/models
 ```
 
@@ -210,17 +210,17 @@ See [Broker Policy](docs/broker-policy.md).
 ## CLI
 
 ```bash
-npx local-ai-gateway init
-npx local-ai-gateway doctor
-npx local-ai-gateway start
-npx local-ai-gateway service install
-npx local-ai-gateway recipes list
-npx local-ai-gateway recipes show generic-openai
-npx local-ai-gateway recipes show generic-mcp
-npx local-ai-gateway recipes show hermes
+npx local-model-gateway init
+npx local-model-gateway doctor
+npx local-model-gateway start
+npx local-model-gateway service install
+npx local-model-gateway recipes list
+npx local-model-gateway recipes show generic-openai
+npx local-model-gateway recipes show generic-mcp
+npx local-model-gateway recipes show hermes
 ```
 
-`init` writes `local-ai-gateway.config.yaml`. `doctor` is the first debugging
+`init` writes `local-model-gateway.config.yaml`. `doctor` is the first debugging
 surface and reports actionable fixes for missing dependencies, occupied ports,
 bad service scripts, and invalid config.
 
@@ -228,11 +228,11 @@ bad service scripts, and invalid config.
 
 | Package | Contents |
 | --- | --- |
-| `@local-ai-gateway/core` | SQLite queue, GPU coordinator, config types, runtime state machine, model registry. |
-| `@local-ai-gateway/gateway` | OpenAI-compatible routes, MCP runtime tools, discovery manifest, server bootstrap. |
-| `@local-ai-gateway/runtime-adapters` | launchd and generic shell adapter helpers. |
-| `@local-ai-gateway/lazy-mcp-broker` | Read-first lazy MCP broker for downstream MCP catalogs. |
-| `local-ai-gateway` | CLI for init, doctor, recipes, service install, and start. |
+| `@local-model-gateway/core` | SQLite queue, GPU coordinator, config types, runtime state machine, model registry. |
+| `@local-model-gateway/gateway` | OpenAI-compatible routes, MCP runtime tools, discovery manifest, server bootstrap. |
+| `@local-model-gateway/runtime-adapters` | launchd and generic shell adapter helpers. |
+| `@local-model-gateway/lazy-mcp-broker` | Read-first lazy MCP broker for downstream MCP catalogs. |
+| `local-model-gateway` | CLI for init, doctor, recipes, service install, and start. |
 
 ## Safety Defaults
 

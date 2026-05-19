@@ -3,8 +3,8 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gatewayLaunchdLabel, renderLaunchdPlist } from '@local-ai-gateway/runtime-adapters';
-import { resolveGatewayConfig } from '@local-ai-gateway/core';
+import { gatewayLaunchdLabel, renderLaunchdPlist } from '@local-model-gateway/runtime-adapters';
+import { resolveGatewayConfig } from '@local-model-gateway/core';
 
 function runLaunchctl(args: string[]): void {
   const result = spawnSync('launchctl', args, { encoding: 'utf8' });
@@ -16,20 +16,20 @@ function runLaunchctl(args: string[]): void {
 
 export async function installLaunchdService(cwd = process.cwd(), load = true): Promise<string> {
   if (process.platform !== 'darwin') {
-    throw new Error('service install currently supports macOS launchd. Use `local-ai-gateway start` on other platforms.');
+    throw new Error('service install currently supports macOS launchd. Use `local-model-gateway start` on other platforms.');
   }
   const config = resolveGatewayConfig({ rootDir: cwd });
   const label = gatewayLaunchdLabel();
   const plistPath = path.join(os.homedir(), 'Library', 'LaunchAgents', `${label}.plist`);
-  const logDir = path.join(os.homedir(), 'Library', 'Logs', 'local-ai-gateway');
+  const logDir = path.join(os.homedir(), 'Library', 'Logs', 'local-model-gateway');
   await mkdir(path.dirname(plistPath), { recursive: true });
   await mkdir(logDir, { recursive: true });
   const plist = renderLaunchdPlist({
     environment: {
-      LOCAL_AI_GATEWAY_CONFIG: config.configPath ?? path.join(cwd, 'local-ai-gateway.config.yaml'),
+      LOCAL_MODEL_GATEWAY_CONFIG: config.configPath ?? path.join(cwd, 'local-model-gateway.config.yaml'),
     },
     label,
-    programArguments: [process.execPath, fileURLToPath(import.meta.resolve('@local-ai-gateway/gateway'))],
+    programArguments: [process.execPath, fileURLToPath(import.meta.resolve('@local-model-gateway/gateway'))],
     standardErrorPath: path.join(logDir, 'stderr.log'),
     standardOutPath: path.join(logDir, 'stdout.log'),
     workingDirectory: cwd,

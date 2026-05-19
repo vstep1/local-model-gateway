@@ -41,7 +41,7 @@ workstation use.
 The systemd examples are stubs for Linux hosts:
 
 - [systemd README](../examples/runtime-adapters/linux/systemd/README.md)
-- [gateway unit template](../examples/runtime-adapters/linux/systemd/local-ai-gateway.service.template)
+- [gateway unit template](../examples/runtime-adapters/linux/systemd/local-model-gateway.service.template)
 - [runtime unit template](../examples/runtime-adapters/linux/systemd/llama-runtime.service.template)
 
 They show the service shape but still need host-specific GPU, user, directory,

@@ -11,8 +11,8 @@ describe('launchd adapter', () => {
   it('renders plist content without com.vs or hardcoded user paths', () => {
     const plist = renderLaunchdPlist({
       label: gatewayLaunchdLabel(),
-      programArguments: ['/usr/local/bin/node', '/opt/local-ai-gateway/dist/index.js'],
-      workingDirectory: '/opt/local-ai-gateway',
+      programArguments: ['/usr/local/bin/node', '/opt/local-model-gateway/dist/index.js'],
+      workingDirectory: '/opt/local-model-gateway',
     });
     assert.match(plist, /ai\.local\.gateway/);
     assert.doesNotMatch(plist, /com\.vs/);

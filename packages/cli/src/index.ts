@@ -3,11 +3,12 @@ import { formatDoctor, runDoctor } from './doctor.js';
 import { writeDefaultConfig } from './init.js';
 import { listRecipes, parseRecipeName, renderRecipe } from './recipes.js';
 import { installLaunchdService } from './service.js';
-import { startGateway } from '@local-ai-gateway/gateway';
+import { startGateway } from '@local-model-gateway/gateway';
 
 function usage(): string {
   return [
-    'Usage: local-ai-gateway <command>',
+    'Usage: local-model-gateway <command>',
+    '       local-ai-gateway <command>  # compatibility alias',
     '',
     'Commands:',
     '  init',

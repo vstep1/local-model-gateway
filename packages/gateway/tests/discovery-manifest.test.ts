@@ -7,7 +7,7 @@ import {
   OpenAiUpstreamPool,
   type ActiveRuntimeSettings,
   type GatewayConfig,
-} from '@local-ai-gateway/core';
+} from '@local-model-gateway/core';
 import { discoveryManifest } from '../src/server.js';
 import { openAiModelAliases } from '../src/server.js';
 
@@ -18,7 +18,7 @@ function config(): GatewayConfig {
     baseModelPath: '/tmp/base.gguf',
     configPath: null,
     ctxSize: 4096,
-    dataDir: '/tmp/local-ai-gateway',
+    dataDir: '/tmp/local-model-gateway',
     dbPath: ':memory:',
     defaultModel: 'ep2',
     gpuLayers: 'all',

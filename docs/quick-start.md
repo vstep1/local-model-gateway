@@ -10,7 +10,7 @@ Framework-specific support lives in CLI recipes, not in the scheduler or gateway
 core. Recipes generate snippets for common clients while keeping the runtime
 coordinator independent of Hermes, Continue, Claude Desktop, or any other agent.
 
-`local-ai-gateway doctor` is the first debugging surface. It checks local
+`local-model-gateway doctor` is the first debugging surface. It checks local
 dependencies, config parsing, service scripts, and port availability before the
 user starts the gateway.
 

@@ -1,8 +1,8 @@
 {
-  "name": "local-ai-gateway-monorepo",
+  "name": "local-model-gateway-monorepo",
   "private": true,
   "version": "0.1.0",
-  "description": "Local AI gateway with shared GPU residency scheduling, OpenAI-compatible HTTP, and MCP tools.",
+  "description": "Local model gateway with shared GPU residency scheduling, OpenAI-compatible HTTP, and MCP tools.",
   "license": "MIT",
   "type": "module",
   "workspaces": [

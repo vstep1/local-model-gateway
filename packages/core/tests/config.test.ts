@@ -6,6 +6,13 @@ import { describe, it } from 'node:test';
 import { resolveGatewayConfig } from '../src/config.js';
 
 const ENV_KEYS = [
+  'LOCAL_MODEL_GATEWAY_CONFIG',
+  'LOCAL_MODEL_GATEWAY_HOST',
+  'LOCAL_MODEL_GATEWAY_PORT',
+  'LOCAL_MODEL_GATEWAY_OPENAI_UPSTREAMS',
+  'LOCAL_MODEL_GATEWAY_MANAGED_RUNTIMES',
+  'LOCAL_MODEL_GATEWAY_ALLOW_UNMANAGED_LOCAL_UPSTREAMS',
+  'LOCAL_MODEL_GATEWAY_AUTH_TOKEN',
   'LOCAL_AI_GATEWAY_CONFIG',
   'LOCAL_AI_GATEWAY_HOST',
   'LOCAL_AI_GATEWAY_PORT',
@@ -57,10 +64,10 @@ function runtimeConfig(extra: Record<string, unknown> = {}): Record<string, unkn
 
 describe('gateway config', () => {
   it('loads YAML config and lets env override server values', async () => {
-    await withEnv({ LOCAL_AI_GATEWAY_PORT: '9999' }, async () => {
-      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-ai-gateway-config-'));
+    await withEnv({ LOCAL_MODEL_GATEWAY_PORT: '9999' }, async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-gateway-config-'));
       await fs.writeFile(
-        path.join(root, 'local-ai-gateway.config.yaml'),
+        path.join(root, 'local-model-gateway.config.yaml'),
         [
           'server:',
           '  host: 127.0.0.1',
@@ -88,13 +95,35 @@ describe('gateway config', () => {
     });
   });
 
+  it('keeps the old local-ai config filename and env prefix as compatibility fallbacks', async () => {
+    await withEnv({ LOCAL_AI_GATEWAY_PORT: '9998' }, async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-gateway-compat-config-'));
+      await fs.writeFile(
+        path.join(root, 'local-ai-gateway.config.yaml'),
+        [
+          'server:',
+          '  host: 127.0.0.1',
+          '  port: 8787',
+          'paths:',
+          '  data_dir: ./state',
+        ].join('\n'),
+        'utf8',
+      );
+
+      const config = resolveGatewayConfig({ rootDir: root });
+      assert.equal(config.configPath, path.join(root, 'local-ai-gateway.config.yaml'));
+      assert.equal(config.port, 9998);
+      assert.equal(config.dataDir, path.join(root, 'state'));
+    });
+  });
+
   it('lets managed aliases win over unmanaged upstream aliases', async () => {
     await withEnv(
       {
-        LOCAL_AI_GATEWAY_MANAGED_RUNTIMES: JSON.stringify({
+        LOCAL_MODEL_GATEWAY_MANAGED_RUNTIMES: JSON.stringify({
           'qwen3-32b': runtimeConfig(),
         }),
-        LOCAL_AI_GATEWAY_OPENAI_UPSTREAMS: JSON.stringify([
+        LOCAL_MODEL_GATEWAY_OPENAI_UPSTREAMS: JSON.stringify([
           {
             baseUrl: 'https://api.example.com/v1',
             models: ['qwen3-32b'],
@@ -114,7 +143,7 @@ describe('gateway config', () => {
   it('loads managed runtime JSON overrides', async () => {
     await withEnv(
       {
-        LOCAL_AI_GATEWAY_MANAGED_RUNTIMES: JSON.stringify({
+        LOCAL_MODEL_GATEWAY_MANAGED_RUNTIMES: JSON.stringify({
           'qwen3-32b': runtimeConfig({ idle_ttl_ms: 1234 }),
           'minimax-m2.7': runtimeConfig({ enabled: false }),
         }),
@@ -135,7 +164,7 @@ describe('gateway config', () => {
   it('rejects unmanaged loopback upstreams by default', async () => {
     await withEnv(
       {
-        LOCAL_AI_GATEWAY_OPENAI_UPSTREAMS: JSON.stringify([
+        LOCAL_MODEL_GATEWAY_OPENAI_UPSTREAMS: JSON.stringify([
           {
             baseUrl: 'http://127.0.0.1:9999/v1',
             models: ['local-unmanaged'],
@@ -153,7 +182,7 @@ describe('gateway config', () => {
   it('keeps external unmanaged upstreams as passive proxies', async () => {
     await withEnv(
       {
-        LOCAL_AI_GATEWAY_OPENAI_UPSTREAMS: JSON.stringify([
+        LOCAL_MODEL_GATEWAY_OPENAI_UPSTREAMS: JSON.stringify([
           {
             baseUrl: 'https://api.example.com/v1',
             models: ['remote-model'],
@@ -170,7 +199,7 @@ describe('gateway config', () => {
   });
 
   it('refuses non-loopback binds without auth', async () => {
-    await withEnv({ LOCAL_AI_GATEWAY_HOST: '0.0.0.0' }, () => {
+    await withEnv({ LOCAL_MODEL_GATEWAY_HOST: '0.0.0.0' }, () => {
       assert.throws(
         () => resolveGatewayConfig(),
         /Refusing to bind 0\.0\.0\.0:8787 without auth/,

@@ -1,8 +1,8 @@
 import { accessSync, constants, existsSync } from 'node:fs';
 import net from 'node:net';
 import { detectEnvironment } from './init.js';
-import { resolveGatewayConfig } from '@local-ai-gateway/core';
-import type { ManagedRuntimeConfig } from '@local-ai-gateway/core';
+import { resolveGatewayConfig } from '@local-model-gateway/core';
+import type { ManagedRuntimeConfig } from '@local-model-gateway/core';
 
 export type DoctorStatus = 'ok' | 'warn' | 'fail';
 

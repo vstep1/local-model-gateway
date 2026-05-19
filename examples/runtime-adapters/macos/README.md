@@ -1,7 +1,7 @@
 # macOS launchd Runtime Example
 
 This example wraps one `llama-server` runtime in a launchd service controlled by
-Local AI Gateway. The gateway calls the copied script with `start`, `stop`,
+Local Model Gateway. The gateway calls the copied script with `start`, `stop`,
 `status`, and `logs`; the script writes a launchd plist and a tiny wrapper under
 your user Library directory.
 
@@ -59,8 +59,8 @@ script on demand.
 
 - Labels default to `ai.local.runtime.<alias>`.
 - Plists are written to `~/Library/LaunchAgents`.
-- Logs default to `~/Library/Logs/local-ai-gateway/<alias>`.
+- Logs default to `~/Library/Logs/local-model-gateway/<alias>`.
 - Runtime wrapper state defaults to
-  `~/Library/Application Support/local-ai-gateway/runtimes/<alias>`.
+  `~/Library/Application Support/local-model-gateway/runtimes/<alias>`.
 - The example is intentionally generic; for unusual llama.cpp arguments, copy
   the generated wrapper and hard-code the exact command you need.

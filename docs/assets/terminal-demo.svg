@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1040" height="560" viewBox="0 0 1040 560" role="img" aria-labelledby="title desc">
-  <title id="title">Local AI Gateway terminal demo</title>
-  <desc id="desc">A terminal-style preview showing local-ai-gateway doctor, status, model discovery, and managed runtime queue state.</desc>
+  <title id="title">Local Model Gateway terminal demo</title>
+  <desc id="desc">A terminal-style preview showing local-model-gateway doctor, status, model discovery, and managed runtime queue state.</desc>
   <defs>
     <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#101820"/>
@@ -16,11 +16,11 @@
   <circle cx="84" cy="68" r="7" fill="#f87171"/>
   <circle cx="108" cy="68" r="7" fill="#fbbf24"/>
   <circle cx="132" cy="68" r="7" fill="#34d399"/>
-  <text x="520" y="73" text-anchor="middle" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">local-ai-gateway</text>
+  <text x="520" y="73" text-anchor="middle" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">local-model-gateway</text>
 
   <text x="86" y="128" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">
     <tspan fill="#93c5fd">$</tspan>
-    <tspan> npx local-ai-gateway doctor</tspan>
+    <tspan> npx local-model-gateway doctor</tspan>
   </text>
   <text x="86" y="166" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
     <tspan fill="#86efac">ok</tspan><tspan>    Node.js runtime</tspan>

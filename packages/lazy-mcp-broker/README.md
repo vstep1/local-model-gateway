@@ -1,4 +1,4 @@
-# @local-ai-gateway/lazy-mcp-broker
+# @local-model-gateway/lazy-mcp-broker
 
 Read-first lazy MCP broker that exposes compact downstream tool discovery.
 

@@ -3,12 +3,12 @@ set -euo pipefail
 
 # Gateway-facing wrapper around a systemd runtime unit.
 # Copy this file to ./runtime-adapters/<alias>-service.sh and set:
-#   RUNTIME_SYSTEMD_UNIT=local-ai-runtime@<alias>.service
+#   RUNTIME_SYSTEMD_UNIT=local-model-runtime@<alias>.service
 # in either the environment or a sibling .env file.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_NAME="$(basename "${BASH_SOURCE[0]}" .sh)"
-ENV_FILE="${LOCAL_AI_GATEWAY_RUNTIME_ENV:-${SCRIPT_DIR}/${SERVICE_NAME}.env}"
+ENV_FILE="${LOCAL_MODEL_GATEWAY_RUNTIME_ENV:-${LOCAL_AI_GATEWAY_RUNTIME_ENV:-${LOCAL_GPU_GATEWAY_RUNTIME_ENV:-${SCRIPT_DIR}/${SERVICE_NAME}.env}}}"
 
 if [[ -f "${ENV_FILE}" ]]; then
   # shellcheck disable=SC1090
@@ -16,7 +16,7 @@ if [[ -f "${ENV_FILE}" ]]; then
 fi
 
 RUNTIME_ALIAS="${RUNTIME_ALIAS:-${SERVICE_NAME%-service}}"
-RUNTIME_SYSTEMD_UNIT="${RUNTIME_SYSTEMD_UNIT:-local-ai-runtime@${RUNTIME_ALIAS}.service}"
+RUNTIME_SYSTEMD_UNIT="${RUNTIME_SYSTEMD_UNIT:-local-model-runtime@${RUNTIME_ALIAS}.service}"
 RUNTIME_SYSTEMD_SCOPE="${RUNTIME_SYSTEMD_SCOPE:-system}"
 SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-systemctl}"
 JOURNALCTL_BIN="${JOURNALCTL_BIN:-journalctl}"

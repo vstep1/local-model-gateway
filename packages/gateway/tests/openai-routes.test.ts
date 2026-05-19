@@ -5,14 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { Hono } from 'hono';
-import { initialConfigEntries } from '@local-ai-gateway/core';
-import { GatewayStore } from '@local-ai-gateway/core';
-import { ModelRegistry } from '@local-ai-gateway/core';
-import { OpenAiUpstreamPool } from '@local-ai-gateway/core';
+import { initialConfigEntries } from '@local-model-gateway/core';
+import { GatewayStore } from '@local-model-gateway/core';
+import { ModelRegistry } from '@local-model-gateway/core';
+import { OpenAiUpstreamPool } from '@local-model-gateway/core';
 import { registerOpenAiRoutes } from '../src/openai-routes.js';
-import { Scheduler } from '@local-ai-gateway/core';
-import { ensureDir, fileSha256 } from '@local-ai-gateway/core';
-import { ActiveRuntimeSettings, GatewayConfig, GenerationBackend, GenerationRequest } from '@local-ai-gateway/core';
+import { Scheduler } from '@local-model-gateway/core';
+import { ensureDir, fileSha256 } from '@local-model-gateway/core';
+import { ActiveRuntimeSettings, GatewayConfig, GenerationBackend, GenerationRequest } from '@local-model-gateway/core';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,7 +70,7 @@ async function createOpenAiApp(): Promise<{
   backend: TestBackend;
   store: GatewayStore;
 }> {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-ai-gateway-openai-'));
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-gateway-openai-'));
   const dataDir = path.join(root, 'data');
   const modelsDir = path.join(root, 'models');
   const sourceDir = path.join(root, 'source');

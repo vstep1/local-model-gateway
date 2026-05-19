@@ -3,13 +3,13 @@ set -euo pipefail
 
 # Generic macOS launchd adapter for one llama-server runtime.
 # Copy this file to ./runtime-adapters/<alias>-service.sh, create a matching
-# ./runtime-adapters/<alias>-service.env, then point local-ai-gateway
+# ./runtime-adapters/<alias>-service.env, then point local-model-gateway
 # service_script at the copied script.
 
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd)"
 SERVICE_NAME="$(basename "${SCRIPT_PATH}" .sh)"
-ENV_FILE="${LOCAL_AI_GATEWAY_RUNTIME_ENV:-${SCRIPT_DIR}/${SERVICE_NAME}.env}"
+ENV_FILE="${LOCAL_MODEL_GATEWAY_RUNTIME_ENV:-${LOCAL_AI_GATEWAY_RUNTIME_ENV:-${LOCAL_GPU_GATEWAY_RUNTIME_ENV:-${SCRIPT_DIR}/${SERVICE_NAME}.env}}}"
 
 if [[ -f "${ENV_FILE}" ]]; then
   # shellcheck disable=SC1090
@@ -59,8 +59,8 @@ RUNTIME_TIMEOUT_SECONDS="${RUNTIME_TIMEOUT_SECONDS:-1800}"
 RUNTIME_EXTRA_ARGS="${RUNTIME_EXTRA_ARGS:-}"
 RUNTIME_WORKDIR="${RUNTIME_WORKDIR:-$(pwd)}"
 RUNTIME_LLAMA_SERVER="${RUNTIME_LLAMA_SERVER:-$(command -v llama-server || true)}"
-RUNTIME_STATE_DIR="${RUNTIME_STATE_DIR:-${HOME}/Library/Application Support/local-ai-gateway/runtimes/${RUNTIME_ALIAS}}"
-RUNTIME_LOG_DIR="${RUNTIME_LOG_DIR:-${HOME}/Library/Logs/local-ai-gateway/${RUNTIME_ALIAS}}"
+RUNTIME_STATE_DIR="${RUNTIME_STATE_DIR:-${HOME}/Library/Application Support/local-model-gateway/runtimes/${RUNTIME_ALIAS}}"
+RUNTIME_LOG_DIR="${RUNTIME_LOG_DIR:-${HOME}/Library/Logs/local-model-gateway/${RUNTIME_ALIAS}}"
 RUNTIME_PLIST_DIR="${RUNTIME_PLIST_DIR:-${HOME}/Library/LaunchAgents}"
 
 USER_UID="$(id -u)"
@@ -149,7 +149,7 @@ $(write_key_string StandardErrorPath "${STDERR_LOG}")
   <key>EnvironmentVariables</key>
   <dict>
 $(write_key_string PATH "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
-$(write_key_string LOCAL_AI_GATEWAY_RUNTIME_ENV "${ENV_FILE}")
+$(write_key_string LOCAL_MODEL_GATEWAY_RUNTIME_ENV "${ENV_FILE}")
   </dict>
 </dict>
 </plist>

@@ -11,10 +11,10 @@ setups. Use it to understand the service split:
 
 Before using it for real:
 
-- replace `LOCAL_AI_GATEWAY_AUTH_TOKEN`
+- replace `LOCAL_MODEL_GATEWAY_AUTH_TOKEN`
 - mount writable config/data/model directories explicitly
 - add the correct GPU device flags for your host
-- update `local-ai-gateway.config.yaml` so runtime `base_url` and `health_url`
+- update `local-model-gateway.config.yaml` so runtime `base_url` and `health_url`
   point at the container or host loopback endpoint you actually expose
 
 ```bash

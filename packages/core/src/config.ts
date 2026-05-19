@@ -3,7 +3,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { GatewayConfig, ManagedRuntimeConfig, OpenAiUpstreamConfig } from './types.js';
 
-export const DEFAULT_CONFIG_FILE = 'local-ai-gateway.config.yaml';
+export const DEFAULT_CONFIG_FILE = 'local-model-gateway.config.yaml';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -109,12 +109,17 @@ function resolveMaybeRelative(value: string, baseDir: string): string {
 
 function findConfigPath(options: ResolveGatewayConfigOptions, rootDir: string): string | null {
   const explicit = options.configPath ?? readStringEnv(
-    ['LOCAL_AI_GATEWAY_CONFIG', 'LOCAL_GPU_GATEWAY_CONFIG'],
+    ['LOCAL_MODEL_GATEWAY_CONFIG', 'LOCAL_AI_GATEWAY_CONFIG', 'LOCAL_GPU_GATEWAY_CONFIG'],
     '',
   );
   if (explicit) return path.resolve(rootDir, explicit);
 
-  for (const fileName of [DEFAULT_CONFIG_FILE, 'local-ai-gateway.config.yml']) {
+  for (const fileName of [
+    DEFAULT_CONFIG_FILE,
+    'local-model-gateway.config.yml',
+    'local-ai-gateway.config.yaml',
+    'local-ai-gateway.config.yml',
+  ]) {
     const candidate = path.resolve(rootDir, fileName);
     if (existsSync(candidate)) return candidate;
   }
@@ -154,13 +159,13 @@ function parseOpenAiUpstreamsFromValue(value: unknown, timeoutMs: number): OpenA
 }
 
 function parseOpenAiUpstreams(configFile: JsonRecord, timeoutMs: number): OpenAiUpstreamConfig[] {
-  const rawJson = readStringEnv(['LOCAL_AI_GATEWAY_OPENAI_UPSTREAMS', 'LOCAL_GPU_GATEWAY_OPENAI_UPSTREAMS'], '');
+  const rawJson = readStringEnv(['LOCAL_MODEL_GATEWAY_OPENAI_UPSTREAMS', 'LOCAL_AI_GATEWAY_OPENAI_UPSTREAMS', 'LOCAL_GPU_GATEWAY_OPENAI_UPSTREAMS'], '');
   if (rawJson) {
     try {
       return parseOpenAiUpstreamsFromValue(JSON.parse(rawJson) as unknown, timeoutMs);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[local-ai-gateway] Ignoring invalid OpenAI upstream JSON: ${message}`);
+      console.warn(`[local-model-gateway] Ignoring invalid OpenAI upstream JSON: ${message}`);
     }
   }
 
@@ -202,14 +207,14 @@ function validateOpenAiUpstreams(
     const aliases = upstream.models.map((model) => model.toLowerCase());
     if (aliases.some((alias) => managedAliases.has(alias))) {
       console.warn(
-        `[local-ai-gateway] Ignoring unmanaged upstream ${upstream.name}: alias is managed by the GPU coordinator`,
+        `[local-model-gateway] Ignoring unmanaged upstream ${upstream.name}: alias is managed by the GPU coordinator`,
       );
       return false;
     }
 
     if (!allowUnmanagedLocalUpstreams && isLoopbackUrl(upstream.baseUrl)) {
       console.warn(
-        `[local-ai-gateway] Ignoring unmanaged loopback upstream ${upstream.name}: set allow_unmanaged_local_upstreams=true to allow`,
+        `[local-model-gateway] Ignoring unmanaged loopback upstream ${upstream.name}: set allow_unmanaged_local_upstreams=true to allow`,
       );
       return false;
     }
@@ -238,7 +243,7 @@ function parseStartupModels(configFile: JsonRecord, configDir: string): Record<s
 
 function parseManagedRuntimes(configFile: JsonRecord, timeoutMs: number, configDir: string): ManagedRuntimeConfig[] {
   let records = runtimeRecords(configFile);
-  const rawJson = readStringEnv(['LOCAL_AI_GATEWAY_MANAGED_RUNTIMES', 'LOCAL_GPU_GATEWAY_MANAGED_RUNTIMES'], '');
+  const rawJson = readStringEnv(['LOCAL_MODEL_GATEWAY_MANAGED_RUNTIMES', 'LOCAL_AI_GATEWAY_MANAGED_RUNTIMES', 'LOCAL_GPU_GATEWAY_MANAGED_RUNTIMES'], '');
   if (rawJson) {
     try {
       const parsed = JSON.parse(rawJson) as unknown;
@@ -250,7 +255,7 @@ function parseManagedRuntimes(configFile: JsonRecord, timeoutMs: number, configD
           }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[local-ai-gateway] Ignoring invalid managed runtime JSON: ${message}`);
+      console.warn(`[local-model-gateway] Ignoring invalid managed runtime JSON: ${message}`);
     }
   }
 
@@ -293,7 +298,7 @@ function parseManagedRuntimes(configFile: JsonRecord, timeoutMs: number, configD
 export function validateGatewayConfig(config: GatewayConfig): void {
   if (!isLoopbackHost(config.host) && !config.authToken) {
     throw new Error(
-      `Refusing to bind ${config.host}:${config.port} without auth. Set server.auth_token or LOCAL_AI_GATEWAY_AUTH_TOKEN.`,
+      `Refusing to bind ${config.host}:${config.port} without auth. Set server.auth_token or LOCAL_MODEL_GATEWAY_AUTH_TOKEN.`,
     );
   }
 }
@@ -309,12 +314,12 @@ export function resolveGatewayConfig(options: ResolveGatewayConfigOptions = {}):
   const generation = asRecord(configFile.generation);
 
   const timeoutMs = readNumberEnv(
-    ['LOCAL_AI_GATEWAY_TIMEOUT_MS', 'LOCAL_GPU_GATEWAY_TIMEOUT_MS'],
+    ['LOCAL_MODEL_GATEWAY_TIMEOUT_MS', 'LOCAL_AI_GATEWAY_TIMEOUT_MS', 'LOCAL_GPU_GATEWAY_TIMEOUT_MS'],
     asNumber(configFile.timeout_ms ?? configFile.timeoutMs, 180_000),
   );
   const managedRuntimes = parseManagedRuntimes(configFile, timeoutMs, configDir);
   const allowUnmanagedLocalUpstreams = readBoolEnv(
-    ['LOCAL_AI_GATEWAY_ALLOW_UNMANAGED_LOCAL_UPSTREAMS', 'LOCAL_GPU_GATEWAY_ALLOW_UNMANAGED_LOCAL_UPSTREAMS'],
+    ['LOCAL_MODEL_GATEWAY_ALLOW_UNMANAGED_LOCAL_UPSTREAMS', 'LOCAL_AI_GATEWAY_ALLOW_UNMANAGED_LOCAL_UPSTREAMS', 'LOCAL_GPU_GATEWAY_ALLOW_UNMANAGED_LOCAL_UPSTREAMS'],
     asBoolean(configFile.allow_unmanaged_local_upstreams ?? configFile.allowUnmanagedLocalUpstreams, false),
   );
   const openAiUpstreams = validateOpenAiUpstreams(
@@ -325,21 +330,21 @@ export function resolveGatewayConfig(options: ResolveGatewayConfigOptions = {}):
 
   const dataDir = resolveMaybeRelative(
     readStringEnv(
-      ['LOCAL_AI_GATEWAY_DATA_DIR', 'LOCAL_GPU_GATEWAY_DATA_DIR'],
+      ['LOCAL_MODEL_GATEWAY_DATA_DIR', 'LOCAL_AI_GATEWAY_DATA_DIR', 'LOCAL_GPU_GATEWAY_DATA_DIR'],
       String(paths.data_dir ?? paths.dataDir ?? './data'),
     ),
     configDir,
   );
   const modelsDir = resolveMaybeRelative(
     readStringEnv(
-      ['LOCAL_AI_GATEWAY_MODELS_DIR', 'LOCAL_GPU_GATEWAY_MODELS_DIR'],
+      ['LOCAL_MODEL_GATEWAY_MODELS_DIR', 'LOCAL_AI_GATEWAY_MODELS_DIR', 'LOCAL_GPU_GATEWAY_MODELS_DIR'],
       String(paths.models_dir ?? paths.modelsDir ?? './models'),
     ),
     configDir,
   );
   const dbPath = resolveMaybeRelative(
     readStringEnv(
-      ['LOCAL_AI_GATEWAY_DB_PATH', 'LOCAL_GPU_GATEWAY_DB_PATH'],
+      ['LOCAL_MODEL_GATEWAY_DB_PATH', 'LOCAL_AI_GATEWAY_DB_PATH', 'LOCAL_GPU_GATEWAY_DB_PATH'],
       String(paths.db_path ?? paths.dbPath ?? './data/gateway.sqlite'),
     ),
     configDir,
@@ -347,59 +352,59 @@ export function resolveGatewayConfig(options: ResolveGatewayConfigOptions = {}):
 
   const config: GatewayConfig = {
     authToken: readStringEnv(
-      ['LOCAL_AI_GATEWAY_AUTH_TOKEN', 'LOCAL_GPU_GATEWAY_AUTH_TOKEN'],
+      ['LOCAL_MODEL_GATEWAY_AUTH_TOKEN', 'LOCAL_AI_GATEWAY_AUTH_TOKEN', 'LOCAL_GPU_GATEWAY_AUTH_TOKEN'],
       String(server.auth_token ?? server.authToken ?? ''),
     ),
     baseModelPath: resolveMaybeRelative(
       readStringEnv(
-        ['LOCAL_AI_GATEWAY_BASE_MODEL_PATH', 'LOCAL_GPU_GATEWAY_BASE_MODEL_PATH'],
+        ['LOCAL_MODEL_GATEWAY_BASE_MODEL_PATH', 'LOCAL_AI_GATEWAY_BASE_MODEL_PATH', 'LOCAL_GPU_GATEWAY_BASE_MODEL_PATH'],
         String(paths.base_model_path ?? paths.baseModelPath ?? './runtime/base.gguf'),
       ),
       configDir,
     ),
     configPath,
     ctxSize: readNumberEnv(
-      ['LOCAL_AI_GATEWAY_CTX_SIZE', 'LOCAL_GPU_GATEWAY_CTX_SIZE'],
+      ['LOCAL_MODEL_GATEWAY_CTX_SIZE', 'LOCAL_AI_GATEWAY_CTX_SIZE', 'LOCAL_GPU_GATEWAY_CTX_SIZE'],
       asNumber(generation.ctx_size ?? generation.ctxSize, 4096),
     ),
     dataDir,
     dbPath,
     defaultModel: readStringEnv(
-      ['LOCAL_AI_GATEWAY_DEFAULT_MODEL', 'LOCAL_GPU_GATEWAY_DEFAULT_MODEL'],
+      ['LOCAL_MODEL_GATEWAY_DEFAULT_MODEL', 'LOCAL_AI_GATEWAY_DEFAULT_MODEL', 'LOCAL_GPU_GATEWAY_DEFAULT_MODEL'],
       String(configFile.default_model ?? configFile.defaultModel ?? 'ep2'),
     ),
     gpuLayers: readStringEnv(
-      ['LOCAL_AI_GATEWAY_GPU_LAYERS', 'LOCAL_GPU_GATEWAY_GPU_LAYERS'],
+      ['LOCAL_MODEL_GATEWAY_GPU_LAYERS', 'LOCAL_AI_GATEWAY_GPU_LAYERS', 'LOCAL_GPU_GATEWAY_GPU_LAYERS'],
       String(generation.gpu_layers ?? generation.gpuLayers ?? 'all'),
     ),
     historyTtlDays: readNumberEnv(
-      ['LOCAL_AI_GATEWAY_HISTORY_TTL_DAYS', 'LOCAL_GPU_GATEWAY_HISTORY_TTL_DAYS'],
+      ['LOCAL_MODEL_GATEWAY_HISTORY_TTL_DAYS', 'LOCAL_AI_GATEWAY_HISTORY_TTL_DAYS', 'LOCAL_GPU_GATEWAY_HISTORY_TTL_DAYS'],
       asNumber(queue.history_ttl_days ?? queue.historyTtlDays, 7),
     ),
     host: readStringEnv(
-      ['LOCAL_AI_GATEWAY_HOST', 'LOCAL_GPU_GATEWAY_HOST'],
+      ['LOCAL_MODEL_GATEWAY_HOST', 'LOCAL_AI_GATEWAY_HOST', 'LOCAL_GPU_GATEWAY_HOST'],
       String(server.host ?? '127.0.0.1'),
     ),
     llamaCliPath: readStringEnv(
-      ['LOCAL_AI_GATEWAY_LLAMA_CLI', 'LOCAL_GPU_GATEWAY_LLAMA_CLI'],
+      ['LOCAL_MODEL_GATEWAY_LLAMA_CLI', 'LOCAL_AI_GATEWAY_LLAMA_CLI', 'LOCAL_GPU_GATEWAY_LLAMA_CLI'],
       String(paths.llama_cli ?? paths.llamaCli ?? 'llama-cli'),
     ),
     managedRuntimes,
     maxQueue: readNumberEnv(
-      ['LOCAL_AI_GATEWAY_MAX_QUEUE', 'LOCAL_GPU_GATEWAY_MAX_QUEUE'],
+      ['LOCAL_MODEL_GATEWAY_MAX_QUEUE', 'LOCAL_AI_GATEWAY_MAX_QUEUE', 'LOCAL_GPU_GATEWAY_MAX_QUEUE'],
       asNumber(queue.max_queue ?? queue.maxQueue, 100),
     ),
     maxQueueWaitMs: readNumberEnv(
-      ['LOCAL_AI_GATEWAY_MAX_QUEUE_WAIT_MS', 'LOCAL_GPU_GATEWAY_MAX_QUEUE_WAIT_MS'],
+      ['LOCAL_MODEL_GATEWAY_MAX_QUEUE_WAIT_MS', 'LOCAL_AI_GATEWAY_MAX_QUEUE_WAIT_MS', 'LOCAL_GPU_GATEWAY_MAX_QUEUE_WAIT_MS'],
       asNumber(queue.max_queue_wait_ms ?? queue.maxQueueWaitMs, 300_000),
     ),
     maxTokens: readNumberEnv(
-      ['LOCAL_AI_GATEWAY_MAX_TOKENS', 'LOCAL_GPU_GATEWAY_MAX_TOKENS'],
+      ['LOCAL_MODEL_GATEWAY_MAX_TOKENS', 'LOCAL_AI_GATEWAY_MAX_TOKENS', 'LOCAL_GPU_GATEWAY_MAX_TOKENS'],
       asNumber(generation.max_tokens ?? generation.maxTokens, 360),
     ),
     modelSourceDir: resolveMaybeRelative(
       readStringEnv(
-        ['LOCAL_AI_GATEWAY_MODEL_SOURCE_DIR', 'LOCAL_GPU_GATEWAY_MODEL_SOURCE_DIR'],
+        ['LOCAL_MODEL_GATEWAY_MODEL_SOURCE_DIR', 'LOCAL_AI_GATEWAY_MODEL_SOURCE_DIR', 'LOCAL_GPU_GATEWAY_MODEL_SOURCE_DIR'],
         String(paths.model_source_dir ?? paths.modelSourceDir ?? './runtime/model-source'),
       ),
       configDir,
@@ -407,22 +412,22 @@ export function resolveGatewayConfig(options: ResolveGatewayConfigOptions = {}):
     modelsDir,
     openAiUpstreams,
     port: readNumberEnv(
-      ['LOCAL_AI_GATEWAY_PORT', 'LOCAL_GPU_GATEWAY_PORT'],
+      ['LOCAL_MODEL_GATEWAY_PORT', 'LOCAL_AI_GATEWAY_PORT', 'LOCAL_GPU_GATEWAY_PORT'],
       asNumber(server.port, 8787),
     ),
     repeatPenalty: readNumberEnv(
-      ['LOCAL_AI_GATEWAY_REPEAT_PENALTY', 'LOCAL_GPU_GATEWAY_REPEAT_PENALTY'],
+      ['LOCAL_MODEL_GATEWAY_REPEAT_PENALTY', 'LOCAL_AI_GATEWAY_REPEAT_PENALTY', 'LOCAL_GPU_GATEWAY_REPEAT_PENALTY'],
       asNumber(generation.repeat_penalty ?? generation.repeatPenalty, 1.0),
     ),
     schedulerPollMs: asNumber(queue.scheduler_poll_ms ?? queue.schedulerPollMs, 250),
     startupModels: parseStartupModels(configFile, configDir),
     temperature: readNumberEnv(
-      ['LOCAL_AI_GATEWAY_TEMPERATURE', 'LOCAL_GPU_GATEWAY_TEMPERATURE'],
+      ['LOCAL_MODEL_GATEWAY_TEMPERATURE', 'LOCAL_AI_GATEWAY_TEMPERATURE', 'LOCAL_GPU_GATEWAY_TEMPERATURE'],
       asNumber(generation.temperature, 0.8),
     ),
     timeoutMs,
     topP: readNumberEnv(
-      ['LOCAL_AI_GATEWAY_TOP_P', 'LOCAL_GPU_GATEWAY_TOP_P'],
+      ['LOCAL_MODEL_GATEWAY_TOP_P', 'LOCAL_AI_GATEWAY_TOP_P', 'LOCAL_GPU_GATEWAY_TOP_P'],
       asNumber(generation.top_p ?? generation.topP, 0.95),
     ),
     waitPollMs: asNumber(queue.wait_poll_ms ?? queue.waitPollMs, 200),

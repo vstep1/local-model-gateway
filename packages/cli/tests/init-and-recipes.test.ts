@@ -10,7 +10,7 @@ import { listRecipes, renderRecipe } from '../src/recipes.js';
 function env(platform: NodeJS.Platform, arch: string): EnvironmentInfo {
   return {
     arch,
-    cwd: '/tmp/local-ai-gateway',
+    cwd: '/tmp/local-model-gateway',
     hasExistingConfig: false,
     llamaCliPath: '/usr/local/bin/llama-cli',
     llamaServerPath: '/usr/local/bin/llama-server',
@@ -73,14 +73,14 @@ describe('cli doctor output', () => {
   });
 
   it('checks enabled runtime scripts and reports unloaded runtime health as a warning', async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-ai-gateway-doctor-'));
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-gateway-doctor-'));
     const runtimeDir = path.join(root, 'runtime-adapters');
     const scriptPath = path.join(runtimeDir, 'test-runtime.sh');
     await fs.mkdir(runtimeDir, { recursive: true });
     await fs.writeFile(scriptPath, '#!/bin/sh\nexit 0\n', 'utf8');
     await fs.chmod(scriptPath, 0o755);
     await fs.writeFile(
-      path.join(root, 'local-ai-gateway.config.yaml'),
+      path.join(root, 'local-model-gateway.config.yaml'),
       [
         'server:',
         '  host: 127.0.0.1',

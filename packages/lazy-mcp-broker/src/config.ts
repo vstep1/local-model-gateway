@@ -7,7 +7,7 @@ import type { BrokerConfig, BrokerToolPolicy, DownstreamServerConfig } from './t
 const DEFAULT_CONFIG_PATH = path.join(
   homedir(),
   '.config',
-  'local-ai-gateway',
+  'local-model-gateway',
   'lazy-mcp-broker.yaml',
 );
 

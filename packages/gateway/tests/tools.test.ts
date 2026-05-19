@@ -21,7 +21,7 @@ describe('gateway setup tools', () => {
       'http://127.0.0.1:18787/v1',
     );
     assert.equal(
-      ((hermes.mcp_servers as Record<string, Record<string, unknown>>)['local-ai-gateway']).url,
+      ((hermes.mcp_servers as Record<string, Record<string, unknown>>)['local-model-gateway']).url,
       'http://127.0.0.1:18787/mcp',
     );
   });

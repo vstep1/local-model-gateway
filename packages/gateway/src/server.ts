@@ -11,11 +11,11 @@ import {
   redactForStatus,
   resolveGatewayConfig,
   ensureDir,
-} from '@local-ai-gateway/core';
+} from '@local-model-gateway/core';
 import { registerOpenAiRoutes } from './openai-routes.js';
-import { Scheduler } from '@local-ai-gateway/core';
+import { Scheduler } from '@local-model-gateway/core';
 import { registerTools } from './tools/index.js';
-import type { ActiveRuntimeSettings, GatewayConfig } from '@local-ai-gateway/core';
+import type { ActiveRuntimeSettings, GatewayConfig } from '@local-model-gateway/core';
 
 function applyRuntimeSettings(
   envConfig: GatewayConfig,
@@ -94,7 +94,7 @@ export function discoveryManifest(
   }));
 
   return redactForStatus({
-    name: 'local-ai-gateway',
+    name: 'local-model-gateway',
     version: '0.1.0',
     openai_base_url: urls.openai,
     mcp_url: urls.mcp,
@@ -141,7 +141,7 @@ export async function startGateway(): Promise<void> {
   const syncResult = await registry.syncStartup();
   if (syncResult.missingSources.length > 0) {
     console.warn(
-      '[local-ai-gateway] Missing startup model sources:',
+      '[local-model-gateway] Missing startup model sources:',
       syncResult.missingSources.join(', '),
     );
   }
@@ -149,13 +149,13 @@ export async function startGateway(): Promise<void> {
   const recoveredGpu = store.recoverInterruptedGpuWork();
   if (recoveredGpu.workItemsFailed > 0 || recoveredGpu.jobsFailed > 0) {
     console.warn(
-      `[local-ai-gateway] Recovered ${recoveredGpu.workItemsFailed} GPU work items and ${recoveredGpu.jobsFailed} jobs after restart.`,
+      `[local-model-gateway] Recovered ${recoveredGpu.workItemsFailed} GPU work items and ${recoveredGpu.jobsFailed} jobs after restart.`,
     );
   }
   const recovered = store.failRunningJobsOnStartup();
   if (recovered > 0) {
     console.warn(
-      `[local-ai-gateway] Recovered ${recovered} running jobs as failed after restart.`,
+      `[local-model-gateway] Recovered ${recovered} running jobs as failed after restart.`,
     );
   }
 
@@ -181,8 +181,8 @@ export async function startGateway(): Promise<void> {
       status: 200,
     },
     instructions:
-      'Local AI Gateway MCP server with shared local GPU runtime scheduling and OpenAI-compatible endpoints.',
-    name: 'local-ai-gateway',
+      'Local Model Gateway MCP server with shared local GPU runtime scheduling and OpenAI-compatible endpoints.',
+    name: 'local-model-gateway',
     version: '0.1.0',
   });
 
@@ -190,7 +190,11 @@ export async function startGateway(): Promise<void> {
 
   const app = server.getApp();
   app.use('*', async (c, next) => {
-    if (c.req.path === '/health' || c.req.path === '/.well-known/local-ai-gateway.json') {
+    if (
+      c.req.path === '/health' ||
+      c.req.path === '/.well-known/local-model-gateway.json' ||
+      c.req.path === '/.well-known/local-ai-gateway.json'
+    ) {
       await next();
       return;
     }
@@ -212,6 +216,9 @@ export async function startGateway(): Promise<void> {
     gpuCoordinator,
   );
 
+  app.get('/.well-known/local-model-gateway.json', async (c) => c.json(
+    discoveryManifest(config, activeSettings, registry, upstreamPool, gpuCoordinator),
+  ));
   app.get('/.well-known/local-ai-gateway.json', async (c) => c.json(
     discoveryManifest(config, activeSettings, registry, upstreamPool, gpuCoordinator),
   ));
@@ -225,7 +232,7 @@ export async function startGateway(): Promise<void> {
         [CONFIG_KEYS.MAX_QUEUE_WAIT_MS]: activeSettings.maxQueueWaitMs,
       },
       queue: scheduler.queueStatus(),
-      service: 'local-ai-gateway',
+      service: 'local-model-gateway',
       ...gpuCoordinator.status(),
       upstreams: upstreamPool.describe(),
       uptime_seconds: Math.floor(process.uptime()),
@@ -238,14 +245,14 @@ export async function startGateway(): Promise<void> {
       return;
     }
     shuttingDown = true;
-    console.error(`[local-ai-gateway] ${signal}: shutting down`);
+    console.error(`[local-model-gateway] ${signal}: shutting down`);
     try {
       await scheduler.stop();
       await server.stop();
       store.close();
     } catch (error) {
       const message = error instanceof Error ? error.stack || error.message : String(error);
-      console.error('[local-ai-gateway] shutdown error:', message);
+      console.error('[local-model-gateway] shutdown error:', message);
     } finally {
       process.exit(0);
     }
@@ -259,10 +266,10 @@ export async function startGateway(): Promise<void> {
   });
 
   process.on('uncaughtException', (error) => {
-    console.error('[local-ai-gateway] uncaught exception:', error);
+    console.error('[local-model-gateway] uncaught exception:', error);
   });
   process.on('unhandledRejection', (error) => {
-    console.error('[local-ai-gateway] unhandled rejection:', error);
+    console.error('[local-model-gateway] unhandled rejection:', error);
   });
 
   await server.start({
@@ -275,6 +282,6 @@ export async function startGateway(): Promise<void> {
   });
 
   console.error(
-    `[local-ai-gateway] listening on http://${config.host}:${config.port} (MCP /mcp, OpenAI /v1/*)`,
+    `[local-model-gateway] listening on http://${config.host}:${config.port} (MCP /mcp, OpenAI /v1/*)`,
   );
 }
