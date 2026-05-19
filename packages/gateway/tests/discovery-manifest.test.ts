@@ -9,6 +9,7 @@ import {
   type GatewayConfig,
 } from '@local-ai-gateway/core';
 import { discoveryManifest } from '../src/server.js';
+import { openAiModelAliases } from '../src/server.js';
 
 function config(): GatewayConfig {
   return {
@@ -89,5 +90,56 @@ describe('discovery manifest', () => {
     const models = manifest.models as Array<Record<string, unknown>>;
     assert.equal(models.some((model) => model.id === 'qwen3-32b'), true);
     assert.equal(models.find((model) => model.id === 'qwen3-32b')?.recommended_prompt_budget, 98304);
+  });
+});
+
+describe('OpenAI model aliases', () => {
+  it('does not advertise the default model when no route can serve it', () => {
+    const cfg = {
+      ...config(),
+      managedRuntimes: [],
+      openAiUpstreams: [],
+    };
+    const store = new GatewayStore(':memory:');
+    store.initSchema();
+    const aliases = openAiModelAliases(
+      new ModelRegistry(store, cfg),
+      new OpenAiUpstreamPool([]),
+      new GpuCoordinator([], store),
+    );
+
+    assert.deepEqual(aliases, []);
+  });
+
+  it('advertises only configured LoRA, managed runtime, and upstream models', () => {
+    const cfg = config();
+    const store = new GatewayStore(':memory:');
+    store.initSchema();
+    store.upsertModel({
+      adapterPath: '/tmp/ep2.gguf',
+      alias: 'ep2',
+      checksumSha256: 'test',
+      enabled: true,
+      managedPath: '/tmp/ep2.gguf',
+      sourcePath: '/tmp/ep2.gguf',
+    });
+
+    const aliases = openAiModelAliases(
+      new ModelRegistry(store, cfg),
+      new OpenAiUpstreamPool([
+        {
+          apiKey: '',
+          apiKeyEnv: '',
+          baseUrl: 'https://example.com/v1',
+          models: ['remote-model'],
+          name: 'remote',
+          timeoutMs: 1000,
+          upstreamModel: 'remote-model',
+        },
+      ]),
+      new GpuCoordinator(cfg.managedRuntimes, store),
+    );
+
+    assert.deepEqual(aliases, ['ep2', 'qwen3-32b', 'remote-model']);
   });
 });

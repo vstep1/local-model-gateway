@@ -105,6 +105,17 @@ export function discoveryManifest(
   });
 }
 
+export function openAiModelAliases(
+  registry: ModelRegistry,
+  upstreamPool: OpenAiUpstreamPool,
+  gpuCoordinator: GpuCoordinator,
+): string[] {
+  const enabled = registry.listModels(true).map((model) => model.alias);
+  const remote = upstreamPool.listModels();
+  const managed = gpuCoordinator.listModels();
+  return Array.from(new Set([...enabled, ...managed, ...remote])).sort();
+}
+
 export async function startGateway(): Promise<void> {
   const envConfig = resolveGatewayConfig();
   await ensureDir(envConfig.dataDir);
@@ -192,17 +203,14 @@ export async function startGateway(): Promise<void> {
     await next();
   });
 
-  registerOpenAiRoutes(app, scheduler, activeSettings, () => {
-    const enabled = registry
-      .listModels(true)
-      .map((model) => model.alias)
-      .sort();
-    const remote = upstreamPool.listModels();
-    const managed = gpuCoordinator.listModels();
-    return Array.from(
-      new Set([...(enabled.length > 0 ? enabled : [config.defaultModel]), ...managed, ...remote]),
-    ).sort();
-  }, upstreamPool, gpuCoordinator);
+  registerOpenAiRoutes(
+    app,
+    scheduler,
+    activeSettings,
+    () => openAiModelAliases(registry, upstreamPool, gpuCoordinator),
+    upstreamPool,
+    gpuCoordinator,
+  );
 
   app.get('/.well-known/local-ai-gateway.json', async (c) => c.json(
     discoveryManifest(config, activeSettings, registry, upstreamPool, gpuCoordinator),
