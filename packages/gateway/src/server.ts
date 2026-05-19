@@ -186,7 +186,7 @@ export async function startGateway(): Promise<void> {
     version: '0.1.0',
   });
 
-  registerTools(server, scheduler, store, registry, gpuCoordinator);
+  registerTools(server, scheduler, store, registry, config, gpuCoordinator);
 
   const app = server.getApp();
   app.use('*', async (c, next) => {

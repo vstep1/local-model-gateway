@@ -4,7 +4,7 @@ import { GatewayStore } from '@local-ai-gateway/core';
 import { GpuCoordinator } from '@local-ai-gateway/core';
 import { ModelRegistry } from '@local-ai-gateway/core';
 import { Scheduler } from '@local-ai-gateway/core';
-import type { JobState } from '@local-ai-gateway/core';
+import type { GatewayConfig, JobState } from '@local-ai-gateway/core';
 
 const stateSchema = z
   .enum(['queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out'])
@@ -21,9 +21,13 @@ function textResult(payload: unknown): { content: Array<{ type: 'text'; text: st
   };
 }
 
-function clientRecipe(kind: 'generic-openai' | 'generic-mcp' | 'hermes'): Record<string, unknown> {
-  const openAiBaseUrl = 'http://127.0.0.1:8787/v1';
-  const mcpUrl = 'http://127.0.0.1:8787/mcp';
+export function clientRecipe(
+  kind: 'generic-openai' | 'generic-mcp' | 'hermes',
+  endpoint: Pick<GatewayConfig, 'host' | 'port'>,
+): Record<string, unknown> {
+  const baseUrl = `http://${endpoint.host}:${endpoint.port}`;
+  const openAiBaseUrl = `${baseUrl}/v1`;
+  const mcpUrl = `${baseUrl}/mcp`;
   if (kind === 'generic-openai') {
     return {
       kind,
@@ -61,6 +65,7 @@ export function registerTools(
   scheduler: Scheduler,
   store: GatewayStore,
   registry: ModelRegistry,
+  config: Pick<GatewayConfig, 'host' | 'port'>,
   gpuCoordinator?: GpuCoordinator,
 ): void {
   server.addTool({
@@ -111,7 +116,7 @@ export function registerTools(
     parameters: z.object({
       client: z.enum(['generic-openai', 'generic-mcp', 'hermes']),
     }),
-    execute: async (args) => textResult(clientRecipe(args.client)),
+    execute: async (args) => textResult(clientRecipe(args.client, config)),
   });
 
   server.addTool({
