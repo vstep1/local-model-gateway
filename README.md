@@ -16,7 +16,13 @@ decisions.
 
 ![Terminal demo showing Local Model Gateway doctor and status output](docs/assets/terminal-demo.svg)
 
-[Watch the 21-second MP4 demo](docs/assets/local-model-gateway-demo.mp4).
+## Demo
+
+Watch a 58-second demo of multiple local clients sharing one OpenAI-compatible
+endpoint while the gateway queues requests, swaps model residency, and keeps
+active work uninterrupted:
+
+[Watch the MP4 demo](docs/assets/local-model-gateway-cli-demo.mp4).
 
 ## Why This Exists
 
@@ -272,7 +278,7 @@ Near-term:
 - richer `doctor` checks for actual runtime service readiness
 - end-to-end fake-runtime smoke tests for streaming, cancellation, and swaps
 - npm publish workflow for the CLI package
-- screenshots or terminal recordings for the README
+- richer screenshots and terminal recordings for setup flows beyond the main demo
 
 Later:
 
