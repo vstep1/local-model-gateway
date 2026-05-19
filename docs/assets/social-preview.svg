@@ -28,29 +28,5 @@
     <text x="64" y="116" fill="#f8fafc" font-family="Inter, Arial, sans-serif" font-size="72" font-weight="800">Local Model Gateway</text>
     <text x="68" y="178" fill="#c7d2fe" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="650">One GPU. Many agents. One scheduler.</text>
     <text x="68" y="232" fill="#94a3b8" font-family="Inter, Arial, sans-serif" font-size="25">OpenAI + MCP behind one local runtime coordinator.</text>
-
-    <g transform="translate(746 132) scale(0.76)" fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M0 52 H126" stroke="url(#line)" stroke-width="8"/>
-      <path d="M0 132 H126" stroke="url(#line)" stroke-width="8"/>
-      <path d="M0 212 H126" stroke="url(#line)" stroke-width="8"/>
-      <path d="M126 52 C172 52 172 132 218 132" stroke="url(#line)" stroke-width="8"/>
-      <path d="M126 212 C172 212 172 132 218 132" stroke="url(#line)" stroke-width="8"/>
-      <path d="M278 132 H382" stroke="url(#line)" stroke-width="8"/>
-      <circle cx="0" cy="52" r="17" fill="#34d399" stroke="none"/>
-      <circle cx="0" cy="132" r="17" fill="#60a5fa" stroke="none"/>
-      <circle cx="0" cy="212" r="17" fill="#a78bfa" stroke="none"/>
-      <rect x="218" y="90" width="60" height="84" rx="16" fill="#0f172a" stroke="#60a5fa" stroke-width="5"/>
-      <rect x="382" y="72" width="132" height="120" rx="24" fill="#0f172a" stroke="#34d399" stroke-width="5"/>
-      <text x="248" y="141" text-anchor="middle" fill="#bfdbfe" stroke="none" font-family="Menlo, Consolas, monospace" font-size="22" font-weight="700">Q</text>
-      <text x="448" y="144" text-anchor="middle" fill="#d1fae5" stroke="none" font-family="Menlo, Consolas, monospace" font-size="28" font-weight="800">GPU</text>
-    </g>
-
-    <g transform="translate(68 314)" font-family="Menlo, Consolas, monospace" font-size="22" fill="#cbd5e1">
-      <text x="0" y="0">/v1/chat/completions</text>
-      <text x="280" y="0" fill="#64748b">|</text>
-      <text x="314" y="0">/mcp</text>
-      <text x="394" y="0" fill="#64748b">|</text>
-      <text x="428" y="0">SQLite queue</text>
-    </g>
   </g>
 </svg>
