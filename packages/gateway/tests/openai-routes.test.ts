@@ -339,6 +339,112 @@ describe('openai-compatible routes', () => {
     }
   });
 
+  it('passes through streaming chat completion chunks from upstreams without buffering', async () => {
+    let receivedBody: { model?: string; stream?: boolean } | null = null;
+    let resolveSecondChunk!: () => void;
+    const sendSecondChunk = new Promise<void>((resolve) => {
+      resolveSecondChunk = resolve;
+    });
+
+    const server = http.createServer((req, res) => {
+      if (req.method !== 'POST' || req.url !== '/v1/chat/completions') {
+        res.writeHead(404).end();
+        return;
+      }
+
+      let raw = '';
+      req.setEncoding('utf8');
+      req.on('data', (chunk) => {
+        raw += chunk;
+      });
+      req.on('end', () => {
+        receivedBody = JSON.parse(raw) as { model?: string; stream?: boolean };
+        res.writeHead(200, {
+          'cache-control': 'no-cache',
+          'content-type': 'text/event-stream',
+        });
+        res.write('data: {"choices":[{"delta":{"content":"first"},"index":0}]}\n\n');
+        void sendSecondChunk.then(() => {
+          res.write('data: {"choices":[{"delta":{"content":"second"},"index":0}]}\n\n');
+          res.end('data: [DONE]\n\n');
+        });
+      });
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+
+    const harness = await createOpenAiApp();
+    try {
+      const upstreamPool = new OpenAiUpstreamPool([
+        {
+          apiKey: '',
+          apiKeyEnv: '',
+          baseUrl: `http://127.0.0.1:${address.port}/v1`,
+          models: ['minimax-m2.7'],
+          name: 'streaming-upstream',
+          timeoutMs: 10_000,
+          upstreamModel: 'MiniMaxAI/MiniMax-M2.7',
+        },
+      ]);
+      const app = new Hono();
+      registerOpenAiRoutes(
+        app,
+        harness.scheduler,
+        harness.store.getRuntimeSettings(),
+        () => ['ep2', ...upstreamPool.listModels()],
+        upstreamPool,
+      );
+
+      const res = await app.request('/v1/chat/completions', {
+        body: JSON.stringify({
+          messages: [{ content: 'stream please', role: 'user' }],
+          model: 'minimax-m2.7',
+          stream: true,
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('content-type'), 'text/event-stream');
+      assert.deepEqual(receivedBody, {
+        messages: [{ content: 'stream please', role: 'user' }],
+        model: 'MiniMaxAI/MiniMax-M2.7',
+        stream: true,
+      });
+
+      const reader = res.body?.getReader();
+      assert.ok(reader, 'streaming response body missing');
+      const decoder = new TextDecoder();
+      const first = await reader.read();
+      assert.equal(first.done, false);
+      assert.match(decoder.decode(first.value), /first/);
+
+      const secondRead = reader.read();
+      const early = await Promise.race([
+        secondRead.then(() => 'chunk' as const),
+        sleep(30).then(() => 'waiting' as const),
+      ]);
+      assert.equal(early, 'waiting');
+
+      resolveSecondChunk();
+      let streamed = decoder.decode((await secondRead).value ?? new Uint8Array());
+      while (!streamed.includes('[DONE]')) {
+        const next = await reader.read();
+        if (next.done) break;
+        streamed += decoder.decode(next.value);
+      }
+      assert.match(streamed, /second/);
+      assert.match(streamed, /\[DONE\]/);
+    } finally {
+      await harness.cleanup();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it('aborts proxied MiniMax requests when the client disconnects', async () => {
     let resolveReceived: () => void = () => {};
     let resolveClosed: () => void = () => {};

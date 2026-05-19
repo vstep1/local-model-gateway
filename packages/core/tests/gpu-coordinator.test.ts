@@ -271,6 +271,115 @@ describe('gpu coordinator', () => {
     }
   });
 
+  it('streams managed runtime responses and holds the lease until the stream closes', async () => {
+    let receivedBody: { model?: string; stream?: boolean } | null = null;
+    let resolveSecondChunk!: () => void;
+    const sendSecondChunk = new Promise<void>((resolve) => {
+      resolveSecondChunk = resolve;
+    });
+    let resolveReceived!: () => void;
+    const received = new Promise<void>((resolve) => {
+      resolveReceived = resolve;
+    });
+
+    const server = http.createServer((req, res) => {
+      if (req.method !== 'POST' || req.url !== '/v1/chat/completions') {
+        res.writeHead(404).end();
+        return;
+      }
+
+      let raw = '';
+      req.setEncoding('utf8');
+      req.on('data', (chunk) => {
+        raw += chunk;
+      });
+      req.on('end', () => {
+        receivedBody = JSON.parse(raw) as { model?: string; stream?: boolean };
+        res.writeHead(200, {
+          'cache-control': 'no-cache',
+          'content-type': 'text/event-stream',
+        });
+        res.write('data: {"choices":[{"delta":{"content":"first"},"index":0}]}\n\n');
+        resolveReceived();
+        void sendSecondChunk.then(() => {
+          res.write('data: {"choices":[{"delta":{"content":"second"},"index":0}]}\n\n');
+          res.end('data: [DONE]\n\n');
+        });
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+
+    const store = createStore();
+    const { hooks } = createHooks();
+    const coordinator = new GpuCoordinator(
+      [runtime('qwen3-32b', `http://127.0.0.1:${address.port}/v1`)],
+      store,
+      hooks,
+    );
+
+    try {
+      const responsePromise = coordinator.proxyChatCompletions(
+        {
+          messages: [{ content: 'stream please', role: 'user' }],
+          model: 'qwen3-32b',
+          stream: true,
+        },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+
+      await received;
+      const response = await responsePromise;
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'text/event-stream');
+      assert.deepEqual(receivedBody, {
+        messages: [{ content: 'stream please', role: 'user' }],
+        model: 'qwen3-32b',
+        stream: true,
+      });
+      assert.equal(coordinator.status().managed_runtimes[0].activeRequests, 1);
+
+      const reader = response.body?.getReader();
+      assert.ok(reader, 'streaming response body missing');
+      const decoder = new TextDecoder();
+      const first = await reader.read();
+      assert.equal(first.done, false);
+      assert.match(decoder.decode(first.value), /first/);
+      assert.equal(coordinator.status().managed_runtimes[0].activeRequests, 1);
+
+      const secondRead = reader.read();
+      const early = await Promise.race([
+        secondRead.then(() => 'chunk' as const),
+        sleep(30).then(() => 'waiting' as const),
+      ]);
+      assert.equal(early, 'waiting');
+
+      resolveSecondChunk();
+      let streamed = decoder.decode((await secondRead).value ?? new Uint8Array());
+      while (!streamed.includes('[DONE]')) {
+        const next = await reader.read();
+        if (next.done) break;
+        streamed += decoder.decode(next.value);
+      }
+      assert.match(streamed, /second/);
+      assert.match(streamed, /\[DONE\]/);
+      await waitFor(
+        () => coordinator.status().managed_runtimes[0].activeRequests === 0,
+        1000,
+        5,
+        'managed runtime lease was not released after stream close',
+      );
+    } finally {
+      store.close();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
   it('blocks MCP work for a different model behind an active URL request, then swaps models', async () => {
     const qwen = await startFakeOpenAiServer('qwen');
     const minimax = await startFakeOpenAiServer('minimax');
