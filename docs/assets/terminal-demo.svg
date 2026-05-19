@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="560" viewBox="0 0 1040 560" role="img" aria-labelledby="title desc">
-  <title id="title">Local Model Gateway terminal demo</title>
-  <desc id="desc">A terminal-style preview showing local-model-gateway doctor, status, model discovery, and managed runtime queue state.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="814" viewBox="0 0 1100 814" role="img" aria-labelledby="title desc">
+  <title id="title">Local Model Gateway live terminal demo</title>
+  <desc id="desc">Terminal-style demo showing Local Model Gateway health, model discovery, streaming output, and runtime status.</desc>
   <defs>
     <linearGradient id="frame" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#101820"/>
@@ -10,47 +10,36 @@
       <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#071018" flood-opacity="0.28"/>
     </filter>
   </defs>
-  <rect width="1040" height="560" rx="18" fill="#eef2f7"/>
-  <rect x="56" y="46" width="928" height="468" rx="14" fill="url(#frame)" filter="url(#shadow)"/>
-  <rect x="56" y="46" width="928" height="44" rx="14" fill="#263241"/>
+  <rect width="1100" height="814" rx="18" fill="#eef2f7"/>
+  <rect x="56" y="46" width="988" height="722" rx="14" fill="url(#frame)" filter="url(#shadow)"/>
+  <rect x="56" y="46" width="988" height="44" rx="14" fill="#263241"/>
   <circle cx="84" cy="68" r="7" fill="#f87171"/>
   <circle cx="108" cy="68" r="7" fill="#fbbf24"/>
   <circle cx="132" cy="68" r="7" fill="#34d399"/>
-  <text x="520" y="73" text-anchor="middle" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">local-model-gateway</text>
-
-  <text x="86" y="128" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">
-    <tspan fill="#93c5fd">$</tspan>
-    <tspan> npx local-model-gateway doctor</tspan>
-  </text>
-  <text x="86" y="166" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
-    <tspan fill="#86efac">ok</tspan><tspan>    Node.js runtime</tspan>
-  </text>
-  <text x="86" y="196" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
-    <tspan fill="#86efac">ok</tspan><tspan>    Config file parsed</tspan>
-  </text>
-  <text x="86" y="226" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
-    <tspan fill="#fde68a">warn</tspan><tspan>  Runtime health currently reachable for minimax-m2.7</tspan>
-  </text>
-  <text x="86" y="256" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">
-    <tspan>      note: fine while unloaded; the gateway starts it on demand</tspan>
-  </text>
-
-  <text x="86" y="308" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">
-    <tspan fill="#93c5fd">$</tspan>
-    <tspan> curl 127.0.0.1:8787/status</tspan>
-  </text>
-  <rect x="86" y="332" width="868" height="132" rx="8" fill="#111827" stroke="#334155"/>
-  <text x="112" y="366" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
-    <tspan>{ "loaded_model": </tspan><tspan fill="#86efac">"qwen3-32b"</tspan><tspan>, "loading_model": null,</tspan>
-  </text>
-  <text x="112" y="398" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
-    <tspan>  "gpu_queue": [</tspan><tspan fill="#93c5fd">OpenAI</tspan><tspan>, </tspan><tspan fill="#c4b5fd">MCP</tspan><tspan>],</tspan>
-  </text>
-  <text x="112" y="430" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17">
-    <tspan>  "policy": </tspan><tspan fill="#fcd34d">"priority, FIFO, no active interrupts"</tspan><tspan> }</tspan>
-  </text>
-
-  <text x="86" y="498" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">
-    OpenAI-compatible HTTP + MCP Streamable HTTP + SQLite GPU residency coordinator
-  </text>
+  <text x="550" y="73" text-anchor="middle" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">local-model-gateway</text>
+  <text x="86" y="122" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#93c5fd">$</tspan><tspan> </tspan><tspan>curl 127.0.0.1:8787/health</tspan></text>
+  <text x="86" y="147" fill="#86efac" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>ok    gateway health: ok</tspan></text>
+  <text x="86" y="172" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#93c5fd">$</tspan><tspan> </tspan><tspan>curl 127.0.0.1:8787/v1/models</tspan></text>
+  <text x="86" y="197" fill="#cbd5e1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>models: ep2, minimax-m2.7, qwen3-32b</tspan></text>
+  <text x="86" y="222" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#93c5fd">$</tspan><tspan> </tspan><tspan>curl 127.0.0.1:8787/status</tspan></text>
+  <text x="86" y="247" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>{</tspan></text>
+  <text x="86" y="272" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>  &quot;active_work&quot;: 0,</tspan></text>
+  <text x="86" y="297" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>  &quot;gpu_queue&quot;: 0,</tspan></text>
+  <text x="86" y="322" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>  &quot;loaded_model&quot;: null,</tspan></text>
+  <text x="86" y="347" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>  &quot;loading_model&quot;: null,</tspan></text>
+  <text x="86" y="372" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>  &quot;runtimes&quot;: &quot;minimax-m2.7:unloaded, qwen3-32b:unloaded&quot;</tspan></text>
+  <text x="86" y="397" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>}</tspan></text>
+  <text x="86" y="422" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#93c5fd">$</tspan><tspan> </tspan><tspan>curl -N 127.0.0.1:8787/v1/chat/completions --model qwen3-32b</tspan></text>
+  <text x="86" y="447" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>streaming through the shared GPU coordinator...</tspan></text>
+  <text x="86" y="472" fill="#86efac" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>first token: 12374ms | events: 28 | total: 13502ms</tspan></text>
+  <text x="86" y="497" fill="#fcd34d" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>Local Model Gateway efficiently queues OpenAI/MCP requests, dynamically loads local runtimes as needed, and streams...</tspan></text>
+  <text x="86" y="522" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan fill="#93c5fd">$</tspan><tspan> </tspan><tspan>curl 127.0.0.1:8787/status</tspan></text>
+  <text x="86" y="547" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>{</tspan></text>
+  <text x="86" y="572" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>  &quot;active_work&quot;: 0,</tspan></text>
+  <text x="86" y="597" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>  &quot;gpu_queue&quot;: 0,</tspan></text>
+  <text x="86" y="622" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>  &quot;loaded_model&quot;: &quot;qwen3-32b&quot;,</tspan></text>
+  <text x="86" y="647" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>  &quot;loading_model&quot;: null,</tspan></text>
+  <text x="86" y="672" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>  &quot;runtimes&quot;: &quot;minimax-m2.7:unloaded, qwen3-32b:loaded&quot;</tspan></text>
+  <text x="86" y="697" fill="#dbeafe" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16"><tspan>}</tspan></text>
+  <text x="86" y="768" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15">OpenAI-compatible HTTP + MCP Streamable HTTP + SQLite GPU residency coordinator</text>
 </svg>

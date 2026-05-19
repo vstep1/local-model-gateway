@@ -18,6 +18,8 @@
     "test": "npm run build && npm run test --workspaces --if-present",
     "audit:ci": "npm audit --audit-level=moderate",
     "scan:public": "node scripts/scan-public-safety.mjs",
+    "demo:record": "node scripts/record-demo.mjs",
+    "demo:record:live": "node scripts/record-demo.mjs --mode live",
     "pack:dry-run": "npm pack --workspaces --dry-run",
     "ci": "npm run typecheck && npm test && npm run audit:ci && npm run scan:public && npm run pack:dry-run"
   },
