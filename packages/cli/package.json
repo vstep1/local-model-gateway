@@ -1,0 +1,26 @@
+{
+  "name": "local-ai-gateway",
+  "version": "0.1.0",
+  "description": "CLI for installing, configuring, and running Local AI Gateway.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "local-ai-gateway": "dist/src/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "test": "tsx --test tests/**/*.test.ts",
+    "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@local-ai-gateway/core": "0.1.0",
+    "@local-ai-gateway/gateway": "0.1.0",
+    "@local-ai-gateway/runtime-adapters": "0.1.0",
+    "yaml": "^2.8.2"
+  }
+}

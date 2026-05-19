@@ -1,0 +1,29 @@
+{
+  "name": "local-ai-gateway-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local AI gateway with shared GPU residency scheduling, OpenAI-compatible HTTP, and MCP tools.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/runtime-adapters",
+    "packages/gateway",
+    "packages/lazy-mcp-broker",
+    "packages/cli"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run build && npm run typecheck --workspaces --if-present",
+    "test": "npm run build && npm run test --workspaces --if-present",
+    "audit:ci": "npm audit --audit-level=moderate",
+    "scan:public": "node scripts/scan-public-safety.mjs",
+    "pack:dry-run": "npm pack --workspaces --dry-run",
+    "ci": "npm run typecheck && npm test && npm run audit:ci && npm run scan:public && npm run pack:dry-run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}

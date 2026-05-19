@@ -1,0 +1,26 @@
+{
+  "name": "@local-ai-gateway/gateway",
+  "version": "0.1.0",
+  "description": "OpenAI-compatible HTTP and MCP gateway for Local AI Gateway.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/src/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "tsx --test tests/**/*.test.ts",
+    "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@local-ai-gateway/core": "0.1.0",
+    "fastmcp": "^3.24.0",
+    "hono": "^4.8.12",
+    "zod": "^3.24.2"
+  }
+}

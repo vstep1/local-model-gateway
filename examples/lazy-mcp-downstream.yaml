@@ -1,0 +1,21 @@
+mcp_servers:
+  example-read-server:
+    command: node
+    args: ["./dist/example-server.js"]
+    broker:
+      default_timeout_ms: 60000
+      default_policy:
+        effect: write
+        cost: unknown
+        confirmation: required
+      tools:
+        search_items:
+          effect: read
+          cost: free
+          confirmation: never
+          timeout_ms: 10000
+        analyze_paid:
+          effect: read
+          cost: metered
+          confirmation: required
+          timeout_ms: 30000

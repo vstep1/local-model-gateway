@@ -1,0 +1,27 @@
+{
+  "name": "@local-ai-gateway/lazy-mcp-broker",
+  "version": "0.1.0",
+  "description": "Read-first lazy MCP broker for compact downstream tool discovery.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/src/server.js",
+  "types": "dist/src/server.d.ts",
+  "files": [
+    "dist",
+    "examples",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/src/server.js",
+    "dev": "tsx src/server.ts",
+    "test": "tsx --test tests/**/*.test.ts",
+    "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "fastmcp": "^3.24.0",
+    "yaml": "^2.8.2",
+    "zod": "^3.24.2"
+  }
+}
