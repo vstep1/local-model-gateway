@@ -94,7 +94,23 @@ export class LlamaCliBackend implements GenerationBackend {
     } catch (error) {
       const durationMs = Date.now() - start;
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`llama-cli failed after ${durationMs}ms: ${message}`);
+      const childError = error as {
+        code?: unknown;
+        signal?: unknown;
+        stdout?: unknown;
+        stderr?: unknown;
+      };
+      const stdoutTail = String(childError.stdout ?? '').slice(-2000);
+      const stderrTail = String(childError.stderr ?? '').slice(-4000);
+      throw new Error(
+        [
+          `llama-cli failed after ${durationMs}ms: ${message}`,
+          childError.code === undefined ? null : `exit_code=${String(childError.code)}`,
+          childError.signal === undefined ? null : `signal=${String(childError.signal)}`,
+          stdoutTail ? `stdout_tail=${stdoutTail}` : null,
+          stderrTail ? `stderr_tail=${stderrTail}` : null,
+        ].filter(Boolean).join('\n'),
+      );
     }
   }
 }
