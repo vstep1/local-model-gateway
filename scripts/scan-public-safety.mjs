@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 import { readdir, readFile, stat } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 const root = process.cwd();
+const execFileAsync = promisify(execFile);
 const ignored = new Set(['node_modules', 'dist', '.git']);
 const forbidden = [
   { pattern: /\/Users\/vs\b/, message: 'hardcoded local user path' },
@@ -33,8 +36,29 @@ async function walk(dir, files = []) {
   return files;
 }
 
+async function candidateFiles() {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+      {
+        cwd: root,
+        encoding: 'buffer',
+        maxBuffer: 20 * 1024 * 1024,
+      },
+    );
+    return stdout
+      .toString('utf8')
+      .split('\0')
+      .filter(Boolean)
+      .map((rel) => path.join(root, rel));
+  } catch {
+    return walk(root);
+  }
+}
+
 const failures = [];
-for (const file of await walk(root)) {
+for (const file of await candidateFiles()) {
   const rel = path.relative(root, file);
   if (forbiddenPackageFiles.some((pattern) => pattern.test(rel))) {
     failures.push(`${rel}: forbidden runtime artifact`);
