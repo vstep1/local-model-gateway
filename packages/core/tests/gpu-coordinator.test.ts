@@ -134,6 +134,7 @@ function runtime(alias: string, baseUrl: string, maxConcurrency = 1): ManagedRun
     serviceScript: `/tmp/${alias}-service.sh`,
     startArgs: ['start'],
     stopArgs: ['stop'],
+    stopSequences: [],
     stopTimeoutMs: 1000,
     supportsReasoning: false,
     supportsStreaming: true,
@@ -271,6 +272,54 @@ describe('gpu coordinator', () => {
     }
   });
 
+  it('reports model load progress while a runtime is starting', async () => {
+    const qwen = await startFakeOpenAiServer('qwen');
+    const store = createStore();
+    let healthy = false;
+    let releaseStart!: () => void;
+    const startGate = new Promise<void>((resolve) => {
+      releaseStart = resolve;
+    });
+    const coordinator = new GpuCoordinator(
+      [runtime('qwen3-32b', qwen.baseUrl)],
+      store,
+      {
+        isHealthy: async () => healthy,
+        runServiceCommand: async (_config, args) => {
+          if (args[0] === 'start') {
+            await startGate;
+            healthy = true;
+          }
+        },
+      },
+    );
+
+    try {
+      const request = coordinator.proxyChatCompletions(
+        { messages: [{ content: 'load telemetry', role: 'user' }], model: 'qwen3-32b' },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+
+      await waitFor(() => coordinator.status().managed_runtimes[0].state === 'loading');
+      const loading = coordinator.status().managed_runtimes[0];
+      assert.equal(loading.loadPhase, 'starting_service');
+      assert.equal(typeof loading.loadElapsedMs, 'number');
+      assert.equal(typeof loading.loadProgress, 'number');
+      assert.ok((loading.loadProgress ?? 0) > 0);
+
+      releaseStart();
+      await qwen.waitForRequests(1);
+      qwen.releaseNext('loaded');
+      assert.equal(await (await request).json().then((body: any) => body.choices[0].message.content), 'loaded');
+    } finally {
+      store.close();
+      await qwen.close();
+    }
+  });
+
   it('streams managed runtime responses and holds the lease until the stream closes', async () => {
     let receivedBody: { model?: string; stream?: boolean } | null = null;
     let resolveSecondChunk!: () => void;
@@ -350,6 +399,15 @@ describe('gpu coordinator', () => {
       assert.equal(first.done, false);
       assert.match(decoder.decode(first.value), /first/);
       assert.equal(coordinator.status().managed_runtimes[0].activeRequests, 1);
+      const streamingStatus = coordinator.status().active_work[0];
+      assert.ok(streamingStatus);
+      assert.equal(streamingStatus.phase, 'streaming');
+      assert.equal(typeof streamingStatus.requestBytes, 'number');
+      assert.ok((streamingStatus.requestBytes as number) > 0);
+      assert.equal(typeof streamingStatus.responseBytes, 'number');
+      assert.ok((streamingStatus.responseBytes as number) > 0);
+      assert.equal(typeof streamingStatus.bandwidthBps, 'number');
+      assert.equal(typeof streamingStatus.timeToFirstByteMs, 'number');
 
       const secondRead = reader.read();
       const early = await Promise.race([

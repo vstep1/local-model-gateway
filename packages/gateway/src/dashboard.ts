@@ -86,7 +86,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     .error.visible { display: block; }
     .summary {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       gap: 12px;
       margin-bottom: 18px;
     }
@@ -100,7 +100,8 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     .label { color: var(--muted); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0; margin-bottom: 9px; }
     .value { font-family: Menlo, Consolas, ui-monospace, monospace; font-size: 1.03rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .value.large { font-size: 1.35rem; font-weight: 700; }
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .metric-sub { margin-top: 7px; color: var(--muted); font-size: 0.8rem; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
     .panel { padding: 16px; overflow: hidden; }
     .runtime-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
     .runtime-card { padding: 14px; }
@@ -120,15 +121,66 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     }
     .state-loaded, .state-running, .state-succeeded { background: var(--green); }
     .state-loading { background: var(--blue); }
+    .state-prefill, .state-admitted, .state-loading-model { background: var(--blue); }
+    .state-streaming, .state-receiving { background: var(--green); }
     .state-queued { background: var(--amber); }
     .state-failed, .state-timed_out, .state-cancelled { background: var(--red); }
     .state-unloading { background: var(--purple); }
     .kv { display: grid; grid-template-columns: 120px 1fr; gap: 6px 10px; font-size: 0.88rem; }
     .kv span:nth-child(odd) { color: var(--muted); }
+    .progress {
+      position: relative;
+      height: 9px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.18);
+      margin: 10px 0 12px;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0;
+      border-radius: inherit;
+      background: var(--blue);
+      transition: width 220ms ease;
+    }
+    .progress-bar.loaded, .progress-bar.streaming { background: var(--green); }
+    .progress-bar.queued { background: var(--amber); }
+    .progress-bar.failed { background: var(--red); }
+    .telemetry-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .telemetry-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: linear-gradient(180deg, rgba(23, 27, 31, 0.96), rgba(15, 18, 22, 0.96));
+      padding: 14px;
+    }
+    .telemetry-card strong { display: block; font-size: 1.02rem; margin-bottom: 5px; }
+    .phase {
+      display: inline-flex;
+      align-items: center;
+      max-width: 150px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #020617;
+      background: var(--gray);
+    }
     table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    #active-work, #gpu-queue { overflow-x: auto; padding-bottom: 4px; }
+    #active-work table { min-width: 980px; }
+    #gpu-queue table { min-width: 680px; }
     th, td { padding: 9px 8px; border-bottom: 1px solid rgba(148, 163, 184, 0.18); text-align: left; vertical-align: top; }
     th { color: #d4d8dc; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0; }
     td.id { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    td.compact { max-width: 105px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .empty { color: var(--muted); padding: 18px 0; }
     .last-updated { color: var(--muted); font-size: 0.88rem; }
     .error-lines { margin-top: 10px; color: #fecdd3; font-size: 0.84rem; display: grid; gap: 4px; }
@@ -164,6 +216,8 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     <section class="error" id="error-banner"></section>
 
     <section class="summary" id="summary"></section>
+
+    <section class="telemetry-strip" id="telemetry-strip"></section>
 
     <section class="panel" style="margin-bottom: 16px;">
       <h2>Managed Runtimes</h2>
@@ -224,23 +278,93 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       return fmtMs(typeof value === 'number' ? value * 1000 : null);
     }
 
+    function fmtBytes(value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let size = Math.max(0, value);
+      let index = 0;
+      while (size >= 1024 && index < units.length - 1) {
+        size = size / 1024;
+        index += 1;
+      }
+      const digits = size >= 10 || index === 0 ? 0 : 1;
+      return size.toFixed(digits) + ' ' + units[index];
+    }
+
+    function fmtBps(value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+      return fmtBytes(value) + '/s';
+    }
+
+    function fmtPercent(value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+      return Math.round(Math.max(0, Math.min(1, value)) * 100) + '%';
+    }
+
     function stateClass(state) {
       return 'state-' + text(state, 'unknown').toLowerCase().replace(/[^a-z0-9_]+/g, '-');
     }
 
-    function metric(label, value, large = false) {
-      return '<article class="metric"><div class="label">' + escapeHtml(label) + '</div><div class="value ' + (large ? 'large' : '') + '" title="' + escapeHtml(value) + '">' + escapeHtml(value) + '</div></article>';
+    function progressBar(value, cls = '') {
+      const percent = typeof value === 'number' && Number.isFinite(value)
+        ? Math.round(Math.max(0, Math.min(1, value)) * 100)
+        : 0;
+      return '<div class="progress" title="' + percent + '%"><div class="progress-bar ' + escapeHtml(cls) + '" style="width: ' + percent + '%"></div></div>';
+    }
+
+    function metric(label, value, large = false, sub = '') {
+      return '<article class="metric"><div class="label">' + escapeHtml(label) + '</div><div class="value ' + (large ? 'large' : '') + '" title="' + escapeHtml(value) + '">' + escapeHtml(value) + '</div>' + (sub ? '<div class="metric-sub">' + escapeHtml(sub) + '</div>' : '') + '</article>';
+    }
+
+    function activeItems(status) {
+      return Array.isArray(status.active_work) ? status.active_work : [];
+    }
+
+    function queuedItems(status) {
+      return Array.isArray(status.gpu_queue) ? status.gpu_queue.filter((item) => item.state === 'queued') : [];
+    }
+
+    function telemetryTotals(status) {
+      const active = activeItems(status);
+      const loadingRuntime = Array.isArray(status.managed_runtimes)
+        ? status.managed_runtimes.find((runtime) => runtime.state === 'loading')
+        : null;
+      return {
+        bandwidthBps: active.reduce((sum, item) => sum + (Number(item.bandwidthBps) || 0), 0),
+        loadingRuntime,
+        requestBytes: active.reduce((sum, item) => sum + (Number(item.requestBytes) || 0), 0),
+        responseBytes: active.reduce((sum, item) => sum + (Number(item.responseBytes) || 0), 0),
+        waitingForFirstByte: active.filter((item) => item.phase === 'prefill').length,
+      };
     }
 
     function renderSummary(status) {
-      const active = Array.isArray(status.active_work) ? status.active_work.length : 0;
-      const queue = Array.isArray(status.gpu_queue) ? status.gpu_queue.filter((item) => item.state === 'queued').length : 0;
+      const active = activeItems(status).length;
+      const queue = queuedItems(status).length;
+      const totals = telemetryTotals(status);
+      const loadingProgress = totals.loadingRuntime ? fmtPercent(totals.loadingRuntime.loadProgress) + ' est' : 'idle';
       document.getElementById('summary').innerHTML = [
         metric('Loaded model', status.loaded_model ?? 'none'),
-        metric('Loading model', status.loading_model ?? 'none'),
+        metric('Loading model', status.loading_model ?? 'none', false, loadingProgress),
         metric('Active work', active, true),
         metric('Queued work', queue, true),
+        metric('Throughput', fmtBps(totals.bandwidthBps), false, 'active upstream avg'),
         metric('Uptime', fmtSeconds(status.uptime_seconds)),
+      ].join('');
+    }
+
+    function renderTelemetry(status) {
+      const totals = telemetryTotals(status);
+      const loading = totals.loadingRuntime;
+      document.getElementById('telemetry-strip').innerHTML = [
+        '<article class="telemetry-card"><div class="label">Model load</div><strong>' + escapeHtml(loading ? loading.alias : 'No active load') + '</strong>'
+          + progressBar(loading ? loading.loadProgress : 0, loading ? 'loading' : '')
+          + '<p>' + escapeHtml(loading ? ((loading.loadPhase || 'loading') + ' · ' + fmtMs(loading.loadElapsedMs) + ' / ' + fmtMs(loading.loadTimeoutMs) + ' estimated') : 'Loaded runtimes stay visible below.') + '</p></article>',
+        '<article class="telemetry-card"><div class="label">Inference prefill</div><strong>' + escapeHtml(totals.waitingForFirstByte + ' waiting for first byte') + '</strong>'
+          + progressBar(activeItems(status).length ? Math.max(0.05, totals.waitingForFirstByte / activeItems(status).length) : 0, 'queued')
+          + '<p>Requests in prefill have reached the runtime but have not streamed output yet.</p></article>',
+        '<article class="telemetry-card"><div class="label">Transfer</div><strong>' + escapeHtml(fmtBps(totals.bandwidthBps)) + '</strong>'
+          + '<p>TX ' + escapeHtml(fmtBytes(totals.requestBytes)) + ' · RX ' + escapeHtml(fmtBytes(totals.responseBytes)) + '</p></article>',
       ].join('');
     }
 
@@ -258,10 +382,13 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
         ].filter(([, value]) => value);
         return '<article class="runtime-card">'
           + '<div class="runtime-head"><div class="runtime-name" title="' + escapeHtml(runtime.alias) + '">' + escapeHtml(runtime.alias) + '</div><span class="pill ' + stateClass(runtime.state) + '">' + escapeHtml(runtime.state) + '</span></div>'
+          + progressBar(runtime.loadProgress, runtime.state)
           + '<div class="kv">'
           + '<span>enabled</span><span>' + escapeHtml(runtime.enabled) + '</span>'
           + '<span>active</span><span>' + escapeHtml(runtime.activeRequests) + ' / ' + escapeHtml(runtime.maxConcurrency) + '</span>'
           + '<span>queued</span><span>' + escapeHtml(runtime.queuedRequests) + '</span>'
+          + '<span>load phase</span><span>' + escapeHtml(runtime.loadPhase) + '</span>'
+          + '<span>load elapsed</span><span>' + escapeHtml(fmtMs(runtime.loadElapsedMs)) + '</span>'
           + '<span>last used</span><span>' + escapeHtml(runtime.lastUsedAt) + '</span>'
           + '<span>upstream</span><span class="mono">' + escapeHtml(runtime.upstreamModel) + '</span>'
           + '</div>'
@@ -279,7 +406,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       root.innerHTML = '<table><thead><tr>' + columns.map((column) => '<th>' + escapeHtml(column.label) + '</th>').join('') + '</tr></thead><tbody>'
         + rows.map((row) => '<tr>' + columns.map((column) => {
           const value = column.format ? column.format(row[column.key], row) : row[column.key];
-          const cls = column.key === 'id' ? ' class="id"' : '';
+          const cls = column.key === 'id' ? ' class="id"' : ['model', 'upstreamName', 'publicJobId'].includes(column.key) ? ' class="compact"' : '';
           const title = column.key === 'id' ? ' title="' + escapeHtml(value) + '"' : '';
           return '<td' + cls + title + '>' + escapeHtml(value) + '</td>';
         }).join('') + '</tr>').join('')
@@ -290,15 +417,24 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       return row.type ?? row.kind ?? value;
     }
 
+    function phaseValue(value) {
+      return text(value).replace(/_/g, ' ');
+    }
+
     function renderWork(status) {
       renderTable('active-work', status.active_work, [
         { key: 'id', label: 'id' },
         { key: 'source', label: 'source' },
         { key: 'model', label: 'model' },
+        { key: 'phase', label: 'phase', format: phaseValue },
         { key: 'priority', label: 'priority' },
-        { key: 'state', label: 'state' },
         { key: 'ageMs', label: 'age', format: fmtMs },
         { key: 'activeDurationMs', label: 'active', format: fmtMs },
+        { key: 'timeToFirstByteMs', label: 'first byte', format: fmtMs },
+        { key: 'requestBytes', label: 'tx', format: fmtBytes },
+        { key: 'responseBytes', label: 'rx', format: fmtBytes },
+        { key: 'bandwidthBps', label: 'rate', format: fmtBps },
+        { key: 'upstreamName', label: 'upstream' },
         { key: 'publicJobId', label: 'job' },
         { key: 'type', label: 'type', format: workType },
       ], 'No active GPU work.');
@@ -306,8 +442,8 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
         { key: 'id', label: 'id' },
         { key: 'source', label: 'source' },
         { key: 'model', label: 'model' },
+        { key: 'phase', label: 'phase', format: phaseValue },
         { key: 'priority', label: 'priority' },
-        { key: 'state', label: 'state' },
         { key: 'ageMs', label: 'age', format: fmtMs },
         { key: 'publicJobId', label: 'job' },
         { key: 'type', label: 'type', format: workType },
@@ -339,6 +475,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
         const status = await response.json();
         clearError();
         renderSummary(status);
+        renderTelemetry(status);
         renderRuntimes(status.managed_runtimes);
         renderWork(status);
         lastUpdated.textContent = 'Updated ' + new Date().toLocaleTimeString();

@@ -40,6 +40,7 @@ function config(): GatewayConfig {
         serviceScript: '/tmp/qwen.sh',
         startArgs: ['start'],
         stopArgs: ['stop'],
+        stopSequences: [],
         stopTimeoutMs: 60000,
         supportsReasoning: false,
         supportsStreaming: true,

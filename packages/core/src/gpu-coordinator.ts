@@ -14,7 +14,7 @@ import {
   OpenAiUpstreamConfig,
   PriorityTier,
 } from './types.js';
-import { makeProxyError, proxyOpenAiJson } from './openai-upstreams.js';
+import { makeProxyError, proxyOpenAiJson, type ProxyTelemetryCallbacks } from './openai-upstreams.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -38,6 +38,14 @@ function ageMs(iso: string | null): number | null {
   return Math.max(0, Date.now() - time);
 }
 
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 class GpuAdmissionError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);
@@ -53,7 +61,37 @@ interface RuntimeState {
   lastLoadError: string | null;
   lastUpstreamError: string | null;
   lastUsedAt: string | null;
+  loadPhase: string | null;
+  loadStartedAt: string | null;
   state: ManagedRuntimeState;
+}
+
+interface WorkTelemetry {
+  firstByteAt: string | null;
+  phase: string;
+  requestBytes: number;
+  responseBytes: number;
+  upstreamName: string | null;
+  upstreamStartedAt: string | null;
+}
+
+function mergeStopSequences(body: Record<string, unknown>, stopSequences: string[]): Record<string, unknown> {
+  if (stopSequences.length === 0) return body;
+
+  const existing = body.stop;
+  const merged = new Set<string>(stopSequences);
+  if (typeof existing === 'string' && existing.trim()) {
+    merged.add(existing);
+  } else if (Array.isArray(existing)) {
+    for (const item of existing) {
+      if (typeof item === 'string' && item.trim()) merged.add(item);
+    }
+  }
+
+  return {
+    ...body,
+    stop: Array.from(merged),
+  };
 }
 
 interface PendingWork {
@@ -98,6 +136,7 @@ export interface GpuCoordinatorHooks {
 export class GpuCoordinator {
   private readonly runtimes = new Map<string, RuntimeState>();
   private readonly pending = new Map<string, PendingWork>();
+  private readonly workTelemetry = new Map<string, WorkTelemetry>();
   private activeExclusiveWorkItemId: string | null = null;
   private admitting = false;
 
@@ -116,6 +155,8 @@ export class GpuCoordinator {
         lastLoadError: null,
         lastUpstreamError: null,
         lastUsedAt: null,
+        loadPhase: null,
+        loadStartedAt: null,
         state: 'unloaded',
       });
     }
@@ -185,6 +226,7 @@ export class GpuCoordinator {
         source: item.source,
         state: item.state,
         type: item.kind,
+        ...this.telemetryStatus(item.id),
       }))
       .sort((a, b) => b.priority - a.priority || a.createdAt.localeCompare(b.createdAt));
 
@@ -201,6 +243,7 @@ export class GpuCoordinator {
         lastLoadError: runtime.lastLoadError,
         lastUpstreamError: runtime.lastUpstreamError,
         lastUsedAt: runtime.lastUsedAt,
+        ...this.runtimeLoadStatus(runtime),
         loadTimeoutMs: runtime.config.loadTimeoutMs,
         maxConcurrency: runtime.config.maxConcurrency,
         queuedRequests: this.store
@@ -223,6 +266,7 @@ export class GpuCoordinator {
       source: item.source,
       state: item.state,
       type: item.kind,
+      ...this.telemetryStatus(item.id),
     }));
 
     return {
@@ -267,7 +311,7 @@ export class GpuCoordinator {
   ): Promise<string> {
     return this.withRuntime(
       { model, priority, publicJobId, signal, source },
-      async (runtime, runtimeSignal) => {
+      async (runtime, runtimeSignal, lease) => {
         onAdmitted?.();
         const parsed = await this.callRuntimeChatJson(
           runtime,
@@ -277,6 +321,7 @@ export class GpuCoordinator {
             stream: false,
           },
           runtimeSignal,
+          lease.workItemId,
         );
 
         const content = parsed.choices?.[0]?.message?.content;
@@ -292,13 +337,13 @@ export class GpuCoordinator {
 
   async withRuntime<T>(
     options: AcquireOptions,
-    handler: (runtime: ManagedRuntimeConfig, signal: AbortSignal) => Promise<T>,
+    handler: (runtime: ManagedRuntimeConfig, signal: AbortSignal, lease: GpuLease) => Promise<T>,
   ): Promise<T> {
     const lease = await this.acquire('runtime', options);
     let releaseState: Exclude<GpuWorkState, 'queued' | 'running'> = 'succeeded';
     let errorText: string | undefined;
     try {
-      return await handler(lease.runtime!, lease.signal);
+      return await handler(lease.runtime!, lease.signal, lease);
     } catch (error) {
       const runtime = lease.runtime ? this.getRuntime(lease.runtime.alias) : null;
       releaseState = lease.signal.aborted ? 'cancelled' : 'failed';
@@ -392,13 +437,20 @@ export class GpuCoordinator {
 
     try {
       const upstream = this.runtimeToUpstream(lease.runtime!);
+      const requestBody = mergeStopSequences(body, lease.runtime!.stopSequences);
+      const telemetry = this.proxyTelemetryCallbacks(lease.workItemId);
+      this.updateTelemetry(lease.workItemId, {
+        phase: 'prefill',
+        upstreamStartedAt: nowIso(),
+      });
       const response = await proxyOpenAiJson(
         [upstream],
         path,
-        body,
+        requestBody,
         model,
         lease.signal,
         () => lease.release(lease.signal.aborted ? 'cancelled' : 'succeeded'),
+        telemetry,
       );
       if (!response.ok) {
         this.getRuntime(model).lastUpstreamError = `HTTP ${response.status}`;
@@ -430,6 +482,14 @@ export class GpuCoordinator {
       priority: options.priority,
       publicJobId: options.publicJobId,
       source: options.source,
+    });
+    this.workTelemetry.set(workItem.id, {
+      firstByteAt: null,
+      phase: 'queued',
+      requestBytes: 0,
+      responseBytes: 0,
+      upstreamName: null,
+      upstreamStartedAt: null,
     });
 
     return new Promise<GpuLease>((resolve, reject) => {
@@ -496,6 +556,7 @@ export class GpuCoordinator {
 
     try {
       if (item.kind === 'runtime') {
+        this.updateTelemetry(item.id, { phase: 'loading_model' });
         const runtime = await this.ensureRuntimeReady(item.model, pending.controller.signal);
         if (pending.controller.signal.aborted) {
           this.store.finishGpuWorkItem(item.id, 'cancelled', 'Client cancelled request');
@@ -508,6 +569,7 @@ export class GpuCoordinator {
         runtime.activeRequests += 1;
         runtime.activeWorkItemIds.add(item.id);
         runtime.lastUsedAt = nowIso();
+        this.updateTelemetry(item.id, { phase: 'admitted' });
         pending.resolve({
           model: runtime.config.alias,
           release: this.once((state = 'succeeded', errorText?: string) => {
@@ -536,6 +598,7 @@ export class GpuCoordinator {
       }
 
       this.activeExclusiveWorkItemId = item.id;
+      this.updateTelemetry(item.id, { phase: 'exclusive_running' });
       pending.resolve({
         model: item.model,
         release: this.once((state = 'succeeded', errorText?: string) => {
@@ -565,6 +628,8 @@ export class GpuCoordinator {
 
     if (runtime.state === 'loaded' && await this.isHealthy(runtime.config)) {
       runtime.lastError = null;
+      runtime.loadPhase = 'ready';
+      runtime.loadStartedAt = null;
       return runtime;
     }
 
@@ -573,6 +638,8 @@ export class GpuCoordinator {
       runtime.state = 'loaded';
       runtime.lastError = null;
       runtime.lastLoadError = null;
+      runtime.loadPhase = 'ready';
+      runtime.loadStartedAt = null;
       runtime.lastUsedAt = nowIso();
       return runtime;
     }
@@ -586,6 +653,8 @@ export class GpuCoordinator {
     runtime.state = 'loading';
     runtime.lastError = null;
     runtime.lastLoadError = null;
+    runtime.loadPhase = 'starting_service';
+    runtime.loadStartedAt = nowIso();
     try {
       await this.runServiceCommand(
         runtime.config,
@@ -593,10 +662,13 @@ export class GpuCoordinator {
         runtime.config.loadTimeoutMs,
         signal,
       );
+      runtime.loadPhase = 'waiting_for_health';
       await this.waitForHealth(runtime.config, true, runtime.config.loadTimeoutMs, signal);
       runtime.state = 'loaded';
       runtime.lastError = null;
       runtime.lastLoadError = null;
+      runtime.loadPhase = 'ready';
+      runtime.loadStartedAt = null;
       runtime.lastUsedAt = nowIso();
       return runtime;
     } catch (error) {
@@ -604,6 +676,7 @@ export class GpuCoordinator {
       runtime.state = 'failed';
       runtime.lastError = message;
       runtime.lastLoadError = message;
+      runtime.loadPhase = 'failed';
       if (error instanceof GpuAdmissionError) {
         throw error;
       }
@@ -619,6 +692,10 @@ export class GpuCoordinator {
       }
       if (runtime.state !== 'loaded' && !await this.isHealthy(runtime.config)) {
         if (runtime.state !== 'failed') runtime.state = 'unloaded';
+        if (runtime.state === 'unloaded') {
+          runtime.loadPhase = null;
+          runtime.loadStartedAt = null;
+        }
         continue;
       }
 
@@ -631,15 +708,19 @@ export class GpuCoordinator {
     if (runtime.activeRequests > 0 && !force) return;
 
     runtime.state = 'unloading';
+    runtime.loadPhase = 'unloading';
+    runtime.loadStartedAt = null;
     try {
       await this.runServiceCommand(runtime.config, runtime.config.stopArgs, runtime.config.stopTimeoutMs);
       await this.waitForHealth(runtime.config, false, runtime.config.stopTimeoutMs);
       runtime.state = 'unloaded';
       runtime.lastError = null;
+      runtime.loadPhase = null;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       runtime.state = 'failed';
       runtime.lastError = message;
+      runtime.loadPhase = 'failed';
     }
   }
 
@@ -743,6 +824,7 @@ export class GpuCoordinator {
     runtime: ManagedRuntimeConfig,
     body: Record<string, unknown>,
     signal?: AbortSignal,
+    workItemId?: string,
   ): Promise<{
     choices?: Array<{ message?: { content?: unknown } }>;
     output?: Array<{ content?: Array<{ text?: unknown }> }>;
@@ -756,16 +838,31 @@ export class GpuCoordinator {
     signal?.addEventListener('abort', abort, { once: true });
 
     try {
+      const requestBody = JSON.stringify({
+        ...mergeStopSequences(body, runtime.stopSequences),
+        model: runtime.upstreamModel || body.model,
+      });
+      if (workItemId) {
+        this.updateTelemetry(workItemId, {
+          phase: 'prefill',
+          requestBytes: byteLength(requestBody),
+          upstreamName: runtime.alias,
+          upstreamStartedAt: nowIso(),
+        });
+      }
       const response = await fetch(`${runtime.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
-        body: JSON.stringify({
-          ...body,
-          model: runtime.upstreamModel || body.model,
-        }),
+        body: requestBody,
         headers: { 'Content-Type': 'application/json' },
         method: 'POST',
         signal: controller.signal,
       });
+      if (workItemId) {
+        this.markFirstByte(workItemId);
+      }
       const text = await response.text();
+      if (workItemId) {
+        this.addResponseBytes(workItemId, byteLength(text));
+      }
       if (!response.ok) {
         this.getRuntime(runtime.alias).lastUpstreamError = `HTTP ${response.status}: ${text.slice(0, 500)}`;
         throw new Error(`Managed runtime request failed (${response.status}): ${text.slice(0, 500)}`);
@@ -775,6 +872,121 @@ export class GpuCoordinator {
       clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
     }
+  }
+
+  private runtimeLoadStatus(runtime: RuntimeState): {
+    loadElapsedMs: number | null;
+    loadPhase: string | null;
+    loadProgress: number | null;
+    loadStartedAt: string | null;
+  } {
+    if (runtime.state === 'loaded') {
+      return {
+        loadElapsedMs: null,
+        loadPhase: runtime.loadPhase ?? 'ready',
+        loadProgress: 1,
+        loadStartedAt: null,
+      };
+    }
+
+    if (runtime.state !== 'loading' || !runtime.loadStartedAt) {
+      return {
+        loadElapsedMs: null,
+        loadPhase: runtime.loadPhase,
+        loadProgress: null,
+        loadStartedAt: runtime.loadStartedAt,
+      };
+    }
+
+    const elapsed = ageMs(runtime.loadStartedAt) ?? 0;
+    return {
+      loadElapsedMs: elapsed,
+      loadPhase: runtime.loadPhase,
+      loadProgress: clamp(elapsed / Math.max(runtime.config.loadTimeoutMs, 1), 0.02, 0.98),
+      loadStartedAt: runtime.loadStartedAt,
+    };
+  }
+
+  private telemetryStatus(workItemId: string): {
+    bandwidthBps: number;
+    phase: string;
+    requestBytes: number;
+    responseBytes: number;
+    timeToFirstByteMs: number | null;
+    upstreamElapsedMs: number | null;
+    upstreamName: string | null;
+  } {
+    const telemetry = this.workTelemetry.get(workItemId);
+    if (!telemetry) {
+      return {
+        bandwidthBps: 0,
+        phase: 'unknown',
+        requestBytes: 0,
+        responseBytes: 0,
+        timeToFirstByteMs: null,
+        upstreamElapsedMs: null,
+        upstreamName: null,
+      };
+    }
+
+    const startedAt = telemetry.upstreamStartedAt;
+    const elapsed = ageMs(startedAt);
+    const firstByte = telemetry.firstByteAt && startedAt
+      ? Math.max(0, Date.parse(telemetry.firstByteAt) - Date.parse(startedAt))
+      : null;
+    const bytes = telemetry.requestBytes + telemetry.responseBytes;
+    const seconds = elapsed && elapsed > 0 ? elapsed / 1000 : 0;
+    return {
+      bandwidthBps: seconds > 0 ? Math.round(bytes / seconds) : 0,
+      phase: telemetry.phase,
+      requestBytes: telemetry.requestBytes,
+      responseBytes: telemetry.responseBytes,
+      timeToFirstByteMs: firstByte,
+      upstreamElapsedMs: elapsed,
+      upstreamName: telemetry.upstreamName,
+    };
+  }
+
+  private updateTelemetry(workItemId: string, patch: Partial<WorkTelemetry>): void {
+    const telemetry = this.workTelemetry.get(workItemId);
+    if (!telemetry) return;
+    this.workTelemetry.set(workItemId, { ...telemetry, ...patch });
+  }
+
+  private addResponseBytes(workItemId: string, bytes: number): void {
+    const telemetry = this.workTelemetry.get(workItemId);
+    if (!telemetry) return;
+    this.workTelemetry.set(workItemId, {
+      ...telemetry,
+      phase: telemetry.firstByteAt ? 'streaming' : 'receiving',
+      responseBytes: telemetry.responseBytes + bytes,
+    });
+  }
+
+  private markFirstByte(workItemId: string): void {
+    const telemetry = this.workTelemetry.get(workItemId);
+    if (!telemetry) return;
+    this.workTelemetry.set(workItemId, {
+      ...telemetry,
+      firstByteAt: telemetry.firstByteAt ?? nowIso(),
+      phase: 'streaming',
+    });
+  }
+
+  private proxyTelemetryCallbacks(workItemId: string): ProxyTelemetryCallbacks {
+    return {
+      onFirstByte: () => this.markFirstByte(workItemId),
+      onRequestBytes: (bytes) => {
+        const telemetry = this.workTelemetry.get(workItemId);
+        if (!telemetry) return;
+        this.workTelemetry.set(workItemId, {
+          ...telemetry,
+          requestBytes: telemetry.requestBytes + bytes,
+        });
+      },
+      onResponseBytes: (bytes) => this.addResponseBytes(workItemId, bytes),
+      onUpstreamSelected: (upstreamName) => this.updateTelemetry(workItemId, { upstreamName }),
+    };
   }
 
   private getRuntime(model: string): RuntimeState {
@@ -878,6 +1090,7 @@ export class GpuCoordinator {
       pending.clientSignal?.removeEventListener('abort', pending.clientAbort);
     }
     this.pending.delete(workItemId);
+    this.workTelemetry.delete(workItemId);
   }
 
   private clearPendingTimeout(pending: PendingWork): void {

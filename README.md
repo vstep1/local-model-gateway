@@ -97,7 +97,15 @@ Create a local config and run the first diagnostic:
 ```bash
 npx local-model-gateway init
 npx local-model-gateway doctor
+npx local-model-gateway doctor --json
+npx local-model-gateway doctor --fix-plan
 ```
+
+Agent-led installs should read [AGENTS.md](AGENTS.md) and the
+[agent install runbook](docs/agent-install.md) before changing ports, services,
+or runtime config. `doctor --json` is the machine-readable preflight surface;
+`doctor --fix-plan` prints read-only remediation steps and never mutates the
+machine.
 
 Start the gateway:
 
@@ -235,6 +243,8 @@ See [Broker Policy](docs/broker-policy.md).
 ```bash
 npx local-model-gateway init
 npx local-model-gateway doctor
+npx local-model-gateway doctor --json
+npx local-model-gateway doctor --fix-plan
 npx local-model-gateway start
 npx local-model-gateway service install
 npx local-model-gateway recipes list
@@ -245,7 +255,8 @@ npx local-model-gateway recipes show hermes
 
 `init` writes `local-model-gateway.config.yaml`. `doctor` is the first debugging
 surface and reports actionable fixes for missing dependencies, occupied ports,
-bad service scripts, and invalid config.
+bad service scripts, sibling gateways, direct `llama.cpp` bypasses, gateway
+endpoints, and invalid config.
 
 ## Packages
 

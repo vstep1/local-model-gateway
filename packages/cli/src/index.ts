@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { formatDoctor, runDoctor } from './doctor.js';
+import { createDoctorReport, formatDoctor, formatDoctorJson, formatFixPlan, runDoctor } from './doctor.js';
 import { writeDefaultConfig } from './init.js';
 import { listRecipes, parseRecipeName, renderRecipe } from './recipes.js';
 import { installLaunchdService } from './service.js';
@@ -11,7 +11,7 @@ function usage(): string {
     '',
     'Commands:',
     '  init',
-    '  doctor',
+    '  doctor [--json|--fix-plan]',
     '  start',
     '  service install',
     '  recipes list',
@@ -34,8 +34,14 @@ async function main(argv: string[]): Promise<void> {
 
   if (command === 'doctor') {
     const checks = await runDoctor(process.cwd());
-    console.log(formatDoctor(checks));
-    if (checks.some((check) => !check.ok)) process.exitCode = 1;
+    if (argv.includes('--json')) {
+      process.stdout.write(formatDoctorJson(checks));
+    } else if (argv.includes('--fix-plan')) {
+      console.log(formatFixPlan(checks));
+    } else {
+      console.log(formatDoctor(checks));
+    }
+    if (createDoctorReport(checks).status === 'fail') process.exitCode = 1;
     return;
   }
 

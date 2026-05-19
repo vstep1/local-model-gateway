@@ -151,6 +151,7 @@ export interface ManagedRuntimeConfig {
   startArgs: string[];
   stopArgs: string[];
   stopTimeoutMs: number;
+  stopSequences: string[];
   recommendedPromptBudget: number | null;
   supportsReasoning: boolean;
   supportsStreaming: boolean;
@@ -171,6 +172,10 @@ export interface ManagedRuntimeStatus {
   lastError: string | null;
   lastUpstreamError: string | null;
   lastUsedAt: string | null;
+  loadElapsedMs: number | null;
+  loadPhase: string | null;
+  loadProgress: number | null;
+  loadStartedAt: string | null;
   loadTimeoutMs: number;
   maxConcurrency: number;
   queuedRequests: number;
@@ -180,15 +185,22 @@ export interface ManagedRuntimeStatus {
 
 export interface GpuQueueStatusItem {
   ageMs: number;
+  bandwidthBps?: number;
   createdAt: string;
   deadlineAt: string | null;
   id: string;
   model: string;
+  phase?: string;
   priority: PriorityTier;
   publicJobId: string | null;
+  requestBytes?: number;
+  responseBytes?: number;
   source: JobSource;
   state: GpuWorkState;
+  timeToFirstByteMs?: number | null;
   type: GpuWorkKind;
+  upstreamElapsedMs?: number | null;
+  upstreamName?: string | null;
 }
 
 export interface ActiveRuntimeSettings {

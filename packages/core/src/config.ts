@@ -281,6 +281,7 @@ function parseManagedRuntimes(configFile: JsonRecord, timeoutMs: number, configD
         serviceScript: resolveMaybeRelative(serviceScriptRaw, configDir),
         startArgs: asStringArray(record.startArgs ?? record.start_args, ['start']),
         stopArgs: asStringArray(record.stopArgs ?? record.stop_args, ['stop']),
+        stopSequences: asStringArray(record.stopSequences ?? record.stop_sequences, []),
         stopTimeoutMs: asNumber(record.stopTimeoutMs ?? record.stop_timeout_ms, 60_000),
         supportsReasoning: asBoolean(record.supportsReasoning ?? record.supports_reasoning, false),
         supportsStreaming: asBoolean(record.supportsStreaming ?? record.supports_streaming, true),

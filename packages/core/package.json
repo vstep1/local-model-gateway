@@ -1,6 +1,6 @@
 {
   "name": "@local-model-gateway/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Core SQLite queue, runtime coordinator, and config primitives for Local Model Gateway.",
   "license": "MIT",
   "type": "module",

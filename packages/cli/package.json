@@ -1,6 +1,6 @@
 {
   "name": "local-model-gateway",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI for installing, configuring, and running Local Model Gateway.",
   "license": "MIT",
   "type": "module",
@@ -18,9 +18,9 @@
     "typecheck": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@local-model-gateway/core": "0.1.0",
-    "@local-model-gateway/gateway": "0.1.0",
-    "@local-model-gateway/runtime-adapters": "0.1.0",
+    "@local-model-gateway/core": "0.2.0",
+    "@local-model-gateway/gateway": "0.2.0",
+    "@local-model-gateway/runtime-adapters": "0.2.0",
     "yaml": "^2.8.2"
   }
 }

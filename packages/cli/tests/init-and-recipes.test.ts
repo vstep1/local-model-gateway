@@ -4,7 +4,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { defaultConfig, type EnvironmentInfo } from '../src/init.js';
-import { formatDoctor, runDoctor } from '../src/doctor.js';
+import {
+  createDoctorReport,
+  formatDoctor,
+  formatDoctorJson,
+  formatFixPlan,
+  runDoctor,
+  type DoctorProbes,
+} from '../src/doctor.js';
 import { listRecipes, renderRecipe } from '../src/recipes.js';
 
 function env(platform: NodeJS.Platform, arch: string): EnvironmentInfo {
@@ -19,6 +26,13 @@ function env(platform: NodeJS.Platform, arch: string): EnvironmentInfo {
     totalMemoryGb: 64,
   };
 }
+
+const quietProbes: DoctorProbes = {
+  httpGet: async () => ({ error: 'not running', ok: false }),
+  listeningPorts: async () => [],
+  listProcesses: async () => [],
+  portOpen: async () => false,
+};
 
 describe('cli init', () => {
   it('generates machine-neutral config with disabled runtime presets', () => {
@@ -49,6 +63,47 @@ describe('cli recipes', () => {
 });
 
 describe('cli doctor output', () => {
+  it('formats json with top-level status aggregation', () => {
+    const checks = [
+      { id: 'ok_check', name: 'OK check', ok: true, fix: 'No action needed.' },
+      {
+        id: 'warn_check',
+        name: 'Warn check',
+        ok: true,
+        status: 'warn' as const,
+        fix: 'Inspect this.',
+      },
+      { id: 'fail_check', name: 'Fail check', ok: false, fix: 'Fix this.' },
+    ];
+    const report = createDoctorReport(checks);
+    assert.equal(report.status, 'fail');
+    assert.deepEqual(report.summary, { fail: 1, ok: 1, warn: 1 });
+    assert.equal(report.checks[2].safe_to_auto_fix, false);
+    assert.match(formatDoctorJson(checks), /"id": "fail_check"/);
+  });
+
+  it('formats a read-only fix plan with high-risk issues first', () => {
+    const text = formatFixPlan([
+      {
+        id: 'config_file_parsed',
+        name: 'Config file parsed',
+        ok: false,
+        fix: 'Fix config.',
+      },
+      {
+        fix: 'Stop sibling gateway.',
+        fixPlan: ['Stop sibling gateway PID 1234.'],
+        id: 'sibling_gateway_detected',
+        message: 'Sibling gateway detected.',
+        name: 'Sibling gateway process detected',
+        ok: false,
+      },
+    ]);
+    assert.match(text, /Read-only plan/);
+    assert.ok(text.indexOf('Sibling gateway detected') < text.indexOf('Config file parsed'));
+    assert.match(text, /Rerun local-model-gateway doctor --json/);
+  });
+
   it('formats actionable failures without stack traces', () => {
     const text = formatDoctor([
       { name: 'llama-server available', ok: false, fix: 'Install llama.cpp.' },
@@ -106,7 +161,7 @@ describe('cli doctor output', () => {
     );
 
     try {
-      const checks = await runDoctor(root);
+      const checks = await runDoctor(root, { probes: quietProbes });
       assert.equal(
         checks.find((check) => check.name === 'Runtime script exists for test-runtime')?.ok,
         true,
@@ -122,5 +177,86 @@ describe('cli doctor output', () => {
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
+  });
+
+  it('detects sibling gateway listeners on non-configured ports', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-gateway-doctor-'));
+    await fs.writeFile(
+      path.join(root, 'local-model-gateway.config.yaml'),
+      [
+        'server:',
+        '  host: 127.0.0.1',
+        '  port: 18790',
+        'paths:',
+        '  data_dir: ./data',
+        '  db_path: ./data/gateway.sqlite',
+        '  models_dir: ./models',
+        '  model_source_dir: ./runtime/model-source',
+        '  llama_cli: llama-cli',
+        '  base_model_path: ./runtime/base.gguf',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const checks = await runDoctor(root, {
+      probes: {
+        ...quietProbes,
+        listeningPorts: async (pid) => (pid === 1234 ? [8788] : []),
+        listProcesses: async () => [{
+          args: '/repo/packages/gateway/dist/src/index.js',
+          command: 'node',
+          pid: 1234,
+          ppid: 1,
+        }],
+      },
+    });
+    await fs.rm(root, { recursive: true, force: true });
+
+    const sibling = checks.find((check) => check.id === 'sibling_gateway_detected');
+    assert.equal(sibling?.ok, false);
+    assert.match(sibling?.fix ?? '', /127\.0\.0\.1:18790\/v1/);
+  });
+
+  it('detects direct llama-cli work that is absent from gateway status', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-gateway-doctor-'));
+    await fs.writeFile(
+      path.join(root, 'local-model-gateway.config.yaml'),
+      [
+        'server:',
+        '  host: 127.0.0.1',
+        '  port: 18791',
+        'paths:',
+        '  data_dir: ./data',
+        '  db_path: ./data/gateway.sqlite',
+        '  models_dir: ./models',
+        '  model_source_dir: ./runtime/model-source',
+        '  llama_cli: llama-cli',
+        '  base_model_path: ./runtime/base.gguf',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+    const checks = await runDoctor(root, {
+      probes: {
+        httpGet: async (url) => ({
+          body: url.endsWith('/status') ? { active_work: [], gpu_queue: [] } : {},
+          ok: true,
+          status: 200,
+        }),
+        listeningPorts: async () => [],
+        listProcesses: async () => [{
+          args: '/opt/homebrew/bin/llama-cli -m model.gguf -p prompt',
+          command: '/opt/homebrew/bin/llama-cli',
+          pid: 2222,
+          ppid: 1,
+        }],
+        portOpen: async () => true,
+      },
+    });
+    await fs.rm(root, { recursive: true, force: true });
+
+    const bypass = checks.find((check) => check.id === 'direct_llama_process_bypass');
+    assert.equal(bypass?.ok, false);
+    assert.match(bypass?.whyItMatters ?? '', /outside the coordinator/);
   });
 });

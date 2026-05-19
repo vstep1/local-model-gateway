@@ -2,6 +2,13 @@ import { OpenAiUpstreamConfig } from './types.js';
 
 const RETRYABLE_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 
+export interface ProxyTelemetryCallbacks {
+  onFirstByte?: () => void;
+  onRequestBytes?: (bytes: number) => void;
+  onResponseBytes?: (bytes: number) => void;
+  onUpstreamSelected?: (upstreamName: string) => void;
+}
+
 function normalizeBaseUrl(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, '');
   if (!trimmed) return '';
@@ -31,6 +38,10 @@ function describeProxyError(error: unknown): string {
   return String(error);
 }
 
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
 export function makeProxyError(status: number, message: string): Response {
   return Response.json(
     {
@@ -52,6 +63,7 @@ export async function proxyOpenAiJson(
   model: string,
   clientSignal?: AbortSignal,
   onComplete?: () => void,
+  telemetry?: ProxyTelemetryCallbacks,
 ): Promise<Response> {
   let finished = false;
   const finish = () => {
@@ -97,10 +109,13 @@ export async function proxyOpenAiJson(
       ...body,
       model: upstream.upstreamModel || model,
     };
+    const requestBody = JSON.stringify(mappedBody);
+    telemetry?.onUpstreamSelected?.(upstream.name);
+    telemetry?.onRequestBytes?.(byteLength(requestBody));
 
     try {
       const response = await fetch(`${normalizeBaseUrl(upstream.baseUrl)}${path}`, {
-        body: JSON.stringify(mappedBody),
+        body: requestBody,
         headers: {
           ...(upstream.apiKey ? { Authorization: `Bearer ${upstream.apiKey}` } : {}),
           'Content-Type': 'application/json',
@@ -110,7 +125,7 @@ export async function proxyOpenAiJson(
       });
 
       if (response.ok || !RETRYABLE_STATUSES.has(response.status)) {
-        return new Response(wrapResponseBody(response.body, controller, cleanupAndFinish), {
+        return new Response(wrapResponseBody(response.body, controller, cleanupAndFinish, telemetry), {
           headers: copyHeaders(response.headers),
           status: response.status,
           statusText: response.statusText,
@@ -118,6 +133,7 @@ export async function proxyOpenAiJson(
       }
 
       const text = await response.text().catch(() => '');
+      telemetry?.onResponseBytes?.(byteLength(text));
       cleanup();
       if (clientSignal?.aborted) {
         finish();
@@ -146,6 +162,7 @@ function wrapResponseBody(
   body: ReadableStream<Uint8Array> | null,
   upstreamController: AbortController,
   cleanup: () => void,
+  telemetry?: ProxyTelemetryCallbacks,
 ): ReadableStream<Uint8Array> | null {
   if (!body) {
     cleanup();
@@ -153,6 +170,7 @@ function wrapResponseBody(
   }
 
   const reader = body.getReader();
+  let sawFirstByte = false;
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
@@ -162,6 +180,11 @@ function wrapResponseBody(
           controller.close();
           return;
         }
+        if (!sawFirstByte) {
+          sawFirstByte = true;
+          telemetry?.onFirstByte?.();
+        }
+        telemetry?.onResponseBytes?.(value.byteLength);
         controller.enqueue(value);
       } catch (error) {
         cleanup();

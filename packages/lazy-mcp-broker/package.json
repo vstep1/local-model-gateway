@@ -1,6 +1,6 @@
 {
   "name": "@local-model-gateway/lazy-mcp-broker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Read-first lazy MCP broker for compact downstream tool discovery.",
   "license": "MIT",
   "type": "module",

@@ -19,6 +19,10 @@ describe('browser dashboard', () => {
     assert.match(html, /sessionStorage/);
     assert.match(html, /managed_runtimes/);
     assert.match(html, /gpu_queue/);
+    assert.match(html, /Model load/);
+    assert.match(html, /Inference prefill/);
+    assert.match(html, /Throughput/);
+    assert.match(html, /bandwidthBps/);
   });
 
   it('allows dashboard without auth while keeping status protected', async () => {
