@@ -22,7 +22,9 @@ Watch a 58-second demo of multiple local clients sharing one OpenAI-compatible
 endpoint while the gateway queues requests, swaps model residency, and keeps
 active work uninterrupted:
 
-[Watch the MP4 demo](docs/assets/local-model-gateway-cli-demo.mp4).
+<video src="docs/assets/local-model-gateway-cli-demo.mp4" controls playsinline width="100%" aria-label="Local Model Gateway demo"></video>
+
+[Open the MP4 demo directly](docs/assets/local-model-gateway-cli-demo.mp4).
 
 ## Why This Exists
 
