@@ -64,7 +64,7 @@ for (const file of await candidateFiles()) {
     failures.push(`${rel}: forbidden runtime artifact`);
     continue;
   }
-  if (!/\.(ts|js|mjs|json|md|svg|yaml|yml|example|gitignore)$/.test(rel)) continue;
+  if (!/\.(ts|js|mjs|json|md|service|sh|svg|template|yaml|yml|example|gitignore)$/.test(rel)) continue;
   const text = await readFile(file, 'utf8');
   for (const rule of forbidden) {
     if (rule.pattern.test(text)) {

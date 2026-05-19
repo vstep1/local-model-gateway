@@ -182,6 +182,12 @@ Built-in presets:
 See [Runtime Config](docs/runtime-config.md) and
 [Coordinator Architecture](docs/coordinator-architecture.md).
 
+Runtime adapter examples:
+
+- [macOS launchd](examples/runtime-adapters/macos/README.md)
+- [Linux systemd stub](examples/runtime-adapters/linux/systemd/README.md)
+- [Docker Compose stub](examples/runtime-adapters/docker/README.md)
+
 ## Lazy MCP Broker
 
 The broker is separate from GPU scheduling. It solves a different local-agent
@@ -258,7 +264,6 @@ package dry run.
 Near-term:
 
 - richer `doctor` checks for actual runtime service readiness
-- polished runtime examples for macOS launchd, Linux systemd, and Docker
 - end-to-end fake-runtime smoke tests for streaming, cancellation, and swaps
 - npm publish workflow for the CLI package
 - screenshots or terminal recordings for the README

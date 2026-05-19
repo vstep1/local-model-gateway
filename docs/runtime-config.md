@@ -20,3 +20,6 @@ LoRA adapters that should be imported at startup can be listed under
 `startup_models` as `alias: ./path/to/adapter.gguf`. The default quick-start
 config leaves this empty so a clean install starts without workstation-specific
 model files.
+
+Runtime adapter examples live in [Runtime Adapters](runtime-adapters.md),
+including a macOS launchd script and Linux systemd/Docker stubs.

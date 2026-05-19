@@ -1,0 +1,37 @@
+services:
+  gateway:
+    image: node:22-bookworm
+    working_dir: /workspace
+    command: ["node", "packages/cli/dist/src/index.js", "start"]
+    ports:
+      - "127.0.0.1:8787:8787"
+    volumes:
+      - ../..:/workspace:ro
+      - local-ai-gateway-data:/workspace/data
+      - local-ai-gateway-models:/workspace/models
+    environment:
+      LOCAL_AI_GATEWAY_HOST: 0.0.0.0
+      LOCAL_AI_GATEWAY_AUTH_TOKEN: change-me
+
+  qwen3-32b:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    profiles: ["runtime"]
+    ports:
+      - "127.0.0.1:18001:18001"
+    command:
+      - -hf
+      - Qwen/Qwen3-32B-GGUF
+      - --hf-file
+      - Qwen3-32B-Q4_K_M.gguf
+      - --alias
+      - qwen3-32b
+      - --host
+      - 0.0.0.0
+      - --port
+      - "18001"
+      - --ctx-size
+      - "131072"
+
+volumes:
+  local-ai-gateway-data:
+  local-ai-gateway-models:
