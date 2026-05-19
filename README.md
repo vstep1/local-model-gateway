@@ -256,15 +256,9 @@ npm run typecheck
 npm test
 npm run build
 npm run scan:public
-npm run demo:record
-npm run demo:record:live
 npm run pack:dry-run
 npm run ci
 ```
-
-`demo:record` regenerates `docs/assets/terminal-demo.svg` from a deterministic
-fake transcript. `demo:record:live` records against `http://127.0.0.1:8787` and
-may start a configured local model.
 
 CI currently runs install, typecheck, tests, build, audit, public scan, and npm
 package dry run.
