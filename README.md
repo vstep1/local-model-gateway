@@ -194,6 +194,10 @@ The broker is separate from GPU scheduling. It solves a different local-agent
 problem: MCP tool catalogs can be huge, and agents should not have to load every
 downstream schema before they need a tool.
 
+The broker starts without opening every downstream MCP. It serves search from a
+local catalog snapshot when available and connects downstream servers only for
+targeted refreshes or selected tool calls.
+
 The broker exposes a tiny surface:
 
 - `search_tools`

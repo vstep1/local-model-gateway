@@ -57,7 +57,7 @@ async function bootstrap(): Promise<void> {
     }),
     execute: async (args) => {
       try {
-        return textResult(broker.describeTool(args.tool_id));
+        return textResult(await broker.describeTool(args.tool_id));
       } catch (error) {
         userError(error);
       }

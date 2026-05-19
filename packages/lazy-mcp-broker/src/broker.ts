@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
@@ -18,10 +18,31 @@ import type {
 
 const RESULT_MAX_CHARS = Number(process.env.LAZY_MCP_BROKER_RESULT_MAX_CHARS || 12000);
 const SPILL_DIR = process.env.LAZY_MCP_BROKER_SPILL_DIR || path.join(tmpdir(), 'lazy-mcp-broker-results');
+const DEFAULT_CATALOG_CACHE_PATH = path.join(
+  homedir(),
+  '.cache',
+  'local-model-gateway',
+  'lazy-mcp-broker-catalog.json',
+);
+const CATALOG_CACHE_VERSION = 1;
+
+export type LazyMcpBrokerOptions = {
+  catalogCachePath?: string;
+  refreshOnStart?: boolean;
+};
 
 type CallResult = {
   content?: Array<{ type?: string; text?: string }>;
   structuredContent?: unknown;
+};
+
+type CatalogCache = {
+  version: number;
+  generatedAt: string;
+  servers: Record<string, {
+    refreshedAt: string;
+    tools: McpTool[];
+  }>;
 };
 
 function headers(config: DownstreamServerConfig): Record<string, string> {
@@ -184,39 +205,37 @@ async function connectOne(name: string, config: DownstreamServerConfig): Promise
 export class LazyMcpBroker {
   private readonly servers = new Map<string, ConnectedDownstream>();
   private readonly catalog = new Map<string, BrokerToolRecord>();
+  private readonly refreshes = new Map<string, Promise<void>>();
+  private readonly connections = new Map<string, Promise<ConnectedDownstream>>();
+  private readonly catalogCachePath: string;
+  private readonly refreshOnStart: boolean;
 
-  constructor(private readonly config: BrokerConfig) {}
+  constructor(
+    private readonly config: BrokerConfig,
+    options: LazyMcpBrokerOptions = {},
+  ) {
+    this.catalogCachePath = options.catalogCachePath
+      ?? process.env.LAZY_MCP_BROKER_CATALOG_CACHE?.trim()
+      ?? DEFAULT_CATALOG_CACHE_PATH;
+    this.refreshOnStart = options.refreshOnStart
+      ?? parseBoolish(process.env.LAZY_MCP_BROKER_REFRESH_ON_START, false);
+  }
 
   async initialize(): Promise<void> {
-    const entries = Object.entries(this.config.mcp_servers);
-    await Promise.all(
-      entries.map(async ([name, serverConfig]) => {
-        try {
-          const connected = await connectOne(name, serverConfig);
-          this.servers.set(name, connected);
-          for (const tool of connected.tools) {
-            const policy = resolveToolPolicy(name, tool, serverConfig);
-            const allowed = isReadOnlyTool(name, tool, serverConfig);
-            const record = makeToolRecord(name, tool, allowed, policy);
-            this.catalog.set(record.toolId, record);
-          }
-          console.error(
-            `[lazy-mcp-broker] connected ${name}: ${connected.tools.length} tools, ${
-              connected.tools.filter((tool) => isReadOnlyTool(name, tool, serverConfig)).length
-            } read-only exposed`,
-          );
-        } catch (error) {
-          this.servers.set(name, {
-            name,
-            config: serverConfig,
-            status: 'failed',
-            error: safeError(error),
-            tools: [],
-          });
-          console.error(`[lazy-mcp-broker] failed to connect ${name}: ${safeError(error)}`);
-        }
-      }),
-    );
+    for (const [name, serverConfig] of Object.entries(this.config.mcp_servers)) {
+      this.servers.set(name, {
+        name,
+        config: serverConfig,
+        status: 'not_connected',
+        tools: [],
+      });
+    }
+    await this.loadCatalogCache();
+    if (this.refreshOnStart) {
+      for (const name of this.servers.keys()) {
+        this.scheduleCatalogRefresh(name);
+      }
+    }
   }
 
   listServers(): Record<string, unknown> {
@@ -229,6 +248,8 @@ export class LazyMcpBroker {
             status: server.status,
             tool_count: server.tools.length,
             allowed_tool_count: serverTools.filter((tool) => tool.allowed).length,
+            cached: server.tools.length > 0 && server.status !== 'connected',
+            refreshing: this.refreshes.has(server.name),
             error: server.error,
           };
         })
@@ -245,6 +266,11 @@ export class LazyMcpBroker {
       if (terms.length === 0) return true;
       return matchScore(record, terms) > 0;
     });
+    if (records.length === 0) {
+      for (const name of this.refreshTargetsForSearch(query, server)) {
+        this.scheduleCatalogRefresh(name);
+      }
+    }
 
     return {
       tools: records
@@ -255,8 +281,8 @@ export class LazyMcpBroker {
     };
   }
 
-  describeTool(toolId: string): Record<string, unknown> {
-    const record = this.catalog.get(toolId);
+  async describeTool(toolId: string): Promise<Record<string, unknown>> {
+    const record = await this.resolveToolRecord(toolId, { keepConnected: false });
     if (!record) {
       throw new Error(`Unknown tool_id: ${toolId}`);
     }
@@ -273,7 +299,7 @@ export class LazyMcpBroker {
   }
 
   async callTool(toolId: string, args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    const record = this.catalog.get(toolId);
+    const record = await this.resolveToolRecord(toolId, { keepConnected: true });
     if (!record) {
       throw new Error(`Unknown tool_id: ${toolId}`);
     }
@@ -283,10 +309,7 @@ export class LazyMcpBroker {
     if (record.policy.confirmation === 'required') {
       throw new Error(`Tool requires explicit confirmation and is not callable through broker v1: ${toolId}`);
     }
-    const server = this.servers.get(record.server);
-    if (!server || server.status !== 'connected' || !server.client) {
-      throw new Error(`Downstream server is not connected: ${record.server}`);
-    }
+    await this.ensureConnected(record.server);
 
     const result = await this.callWithReconnect(record, args);
     return {
@@ -295,6 +318,21 @@ export class LazyMcpBroker {
       name: record.name,
       result: await compactResult(record.toolId, result),
     };
+  }
+
+  private async resolveToolRecord(
+    toolId: string,
+    options: { keepConnected: boolean },
+  ): Promise<BrokerToolRecord | undefined> {
+    const cached = this.catalog.get(toolId);
+    if (cached) return cached;
+
+    const separator = toolId.indexOf(':');
+    if (separator <= 0) return undefined;
+    const serverName = toolId.slice(0, separator);
+    if (!this.servers.has(serverName)) return undefined;
+    await this.refreshServerCatalog(serverName, { keepConnected: options.keepConnected });
+    return this.catalog.get(toolId);
   }
 
   private async callWithReconnect(
@@ -349,8 +387,7 @@ export class LazyMcpBroker {
     }
 
     try {
-      const connected = await connectOne(name, current.config);
-      this.servers.set(name, connected);
+      await this.ensureConnected(name, { forceReconnect: true });
     } catch (error) {
       this.servers.set(name, {
         ...current,
@@ -361,4 +398,225 @@ export class LazyMcpBroker {
       });
     }
   }
+
+  private async ensureConnected(
+    name: string,
+    options: { forceReconnect?: boolean } = {},
+  ): Promise<ConnectedDownstream> {
+    const current = this.servers.get(name);
+    if (!current) {
+      throw new Error(`Unknown downstream server: ${name}`);
+    }
+    if (!options.forceReconnect && current.status === 'connected' && current.client) {
+      return current;
+    }
+    if (!options.forceReconnect) {
+      const inflight = this.connections.get(name);
+      if (inflight) return inflight;
+      const refresh = this.refreshes.get(name);
+      if (refresh) {
+        await refresh.catch(() => undefined);
+        const refreshed = this.servers.get(name);
+        if (refreshed?.status === 'connected' && refreshed.client) {
+          return refreshed;
+        }
+      }
+    }
+
+    const connection = (async () => {
+      if (options.forceReconnect) {
+        try {
+          await current.client?.close();
+        } catch {
+          // Best effort close before reconnecting.
+        }
+      }
+      this.servers.set(name, {
+        ...current,
+        client: undefined,
+        status: 'refreshing',
+        error: undefined,
+      });
+      try {
+        const connected = await connectOne(name, current.config);
+        this.applyServerTools(name, connected.tools, 'connected', connected.client);
+        console.error(
+          `[lazy-mcp-broker] connected ${name}: ${connected.tools.length} tools, ${
+            connected.tools.filter((tool) => isReadOnlyTool(name, tool, current.config)).length
+          } read-only exposed`,
+        );
+        await this.saveCatalogCache();
+        return this.servers.get(name) as ConnectedDownstream;
+      } catch (error) {
+        const previous = this.servers.get(name) ?? current;
+        this.servers.set(name, {
+          ...previous,
+          client: undefined,
+          status: 'failed',
+          error: safeError(error),
+        });
+        throw error;
+      } finally {
+        this.connections.delete(name);
+      }
+    })();
+
+    this.connections.set(name, connection);
+    return connection;
+  }
+
+  private scheduleCatalogRefresh(name: string): void {
+    if (!this.servers.has(name) || this.refreshes.has(name) || this.connections.has(name)) {
+      return;
+    }
+    const refresh = this.refreshServerCatalog(name, { keepConnected: false })
+      .catch((error) => {
+        console.error(`[lazy-mcp-broker] failed to refresh ${name}: ${safeError(error)}`);
+      })
+      .finally(() => {
+        this.refreshes.delete(name);
+      });
+    this.refreshes.set(name, refresh);
+  }
+
+  private async refreshServerCatalog(
+    name: string,
+    options: { keepConnected: boolean },
+  ): Promise<void> {
+    const current = this.servers.get(name);
+    if (!current) {
+      throw new Error(`Unknown downstream server: ${name}`);
+    }
+    this.servers.set(name, {
+      ...current,
+      status: 'refreshing',
+      error: undefined,
+    });
+
+    let connected: ConnectedDownstream | undefined;
+    try {
+      connected = await connectOne(name, current.config);
+      this.applyServerTools(name, connected.tools, options.keepConnected ? 'connected' : 'cached', connected.client);
+      console.error(
+        `[lazy-mcp-broker] refreshed ${name}: ${connected.tools.length} tools, ${
+          connected.tools.filter((tool) => isReadOnlyTool(name, tool, current.config)).length
+        } read-only exposed`,
+      );
+      await this.saveCatalogCache();
+    } catch (error) {
+      const previous = this.servers.get(name) ?? current;
+      this.servers.set(name, {
+        ...previous,
+        client: undefined,
+        status: 'failed',
+        error: safeError(error),
+      });
+      throw error;
+    } finally {
+      if (!options.keepConnected) {
+        try {
+          await connected?.client?.close();
+        } catch {
+          // Best effort close after catalog refresh.
+        }
+        const latest = this.servers.get(name);
+        if (latest?.status === 'cached') {
+          this.servers.set(name, { ...latest, client: undefined });
+        }
+      }
+    }
+  }
+
+  private applyServerTools(
+    name: string,
+    tools: McpTool[],
+    status: ConnectedDownstream['status'],
+    client?: Client,
+  ): void {
+    const current = this.servers.get(name);
+    if (!current) return;
+    for (const toolId of Array.from(this.catalog.keys())) {
+      if (toolId.startsWith(`${name}:`)) {
+        this.catalog.delete(toolId);
+      }
+    }
+    for (const tool of tools) {
+      const policy = resolveToolPolicy(name, tool, current.config);
+      const allowed = isReadOnlyTool(name, tool, current.config);
+      const record = makeToolRecord(name, tool, allowed, policy);
+      this.catalog.set(record.toolId, record);
+    }
+    this.servers.set(name, {
+      ...current,
+      client,
+      status,
+      error: undefined,
+      tools,
+    });
+  }
+
+  private refreshTargetsForSearch(query: string, server?: string): string[] {
+    if (server) return this.servers.has(server) ? [server] : [];
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (terms.length === 0) return [];
+    return Array.from(this.servers.keys()).filter((name) => {
+      const normalized = name.toLowerCase();
+      return terms.some((term) => normalized.includes(term));
+    });
+  }
+
+  private async loadCatalogCache(): Promise<void> {
+    let parsed: CatalogCache;
+    try {
+      parsed = JSON.parse(await readFile(this.catalogCachePath, 'utf8')) as CatalogCache;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.error(`[lazy-mcp-broker] ignored catalog cache: ${safeError(error)}`);
+      }
+      return;
+    }
+    if (parsed.version !== CATALOG_CACHE_VERSION || !parsed.servers || typeof parsed.servers !== 'object') {
+      console.error('[lazy-mcp-broker] ignored catalog cache: incompatible version');
+      return;
+    }
+    let loaded = 0;
+    for (const [name, cached] of Object.entries(parsed.servers)) {
+      if (!this.servers.has(name) || !Array.isArray(cached.tools)) continue;
+      this.applyServerTools(name, cached.tools, 'cached');
+      loaded += cached.tools.length;
+    }
+    if (loaded > 0) {
+      console.error(`[lazy-mcp-broker] loaded ${loaded} cached tool definitions from ${this.catalogCachePath}`);
+    }
+  }
+
+  private async saveCatalogCache(): Promise<void> {
+    const servers: CatalogCache['servers'] = {};
+    for (const server of this.servers.values()) {
+      if (server.tools.length === 0) continue;
+      servers[server.name] = {
+        refreshedAt: new Date().toISOString(),
+        tools: server.tools,
+      };
+    }
+    await mkdir(path.dirname(this.catalogCachePath), { recursive: true });
+    await writeFile(
+      this.catalogCachePath,
+      JSON.stringify({
+        version: CATALOG_CACHE_VERSION,
+        generatedAt: new Date().toISOString(),
+        servers,
+      } satisfies CatalogCache, null, 2),
+      'utf8',
+    );
+  }
+}
+
+function parseBoolish(value: unknown, fallback: boolean): boolean {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    return !['0', 'false', 'no', 'off'].includes(value.trim().toLowerCase());
+  }
+  return Boolean(value);
 }

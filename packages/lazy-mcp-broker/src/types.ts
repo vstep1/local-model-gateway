@@ -43,7 +43,7 @@ export type ConnectedDownstream = {
   name: string;
   config: DownstreamServerConfig;
   client?: Client;
-  status: 'connected' | 'failed';
+  status: 'not_connected' | 'cached' | 'refreshing' | 'connected' | 'failed';
   error?: string;
   tools: McpTool[];
 };
