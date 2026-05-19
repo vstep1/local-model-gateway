@@ -1,9 +1,6 @@
 # Local Model Gateway
 
-[![CI](https://github.com/vstep1/local-model-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/vstep1/local-model-gateway/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](package.json)
-[![Protocols](https://img.shields.io/badge/protocols-OpenAI%20%2B%20MCP-purple.svg)](#protocols)
+[![CI](https://github.com/vstep1/local-model-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/vstep1/local-model-gateway/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](package.json) [![Release](https://img.shields.io/github/v/release/vstep1/local-model-gateway?label=release&color=brightgreen)](https://github.com/vstep1/local-model-gateway/releases) [![Protocols](https://img.shields.io/badge/protocols-OpenAI%20%2B%20MCP-purple.svg)](#protocols)
 
 Local Model Gateway is a local-first control plane for running agent workloads on
 one workstation GPU.
@@ -13,6 +10,10 @@ then puts all GPU-bound work behind one SQLite-backed scheduler. Agents can ask
 for Qwen, MiniMax, a LoRA job, or another local runtime through the same gateway
 without racing each other, double-loading models, or bypassing load/unload
 decisions.
+
+Works with:
+
+[![OpenAI-compatible](https://img.shields.io/badge/OpenAI-compatible-111827)](#openai-compatible) [![MCP clients](https://img.shields.io/badge/MCP-clients-2563eb)](#mcp) [![Hermes](https://img.shields.io/badge/Hermes-recipe-7c3aed)](#cli) [![llama.cpp](https://img.shields.io/badge/llama.cpp-runtime-059669)](#runtime-coordination) [![macOS launchd](https://img.shields.io/badge/macOS-launchd-f97316)](examples/runtime-adapters/macos/README.md)
 
 ## Demo
 
@@ -38,6 +39,15 @@ that breaks down quickly:
   user asks for any tool
 
 Local Model Gateway gives those moving parts one admission layer.
+
+## Use Cases
+
+- Run several local agents through one OpenAI-compatible base URL without
+  letting them fight over the same GPU.
+- Swap between different local model runtimes only when active work drains, so
+  long requests are not interrupted mid-stream.
+- Keep large MCP tool catalogs out of an agent prompt until a tool is actually
+  searched, described, or called.
 
 ## What You Get
 
