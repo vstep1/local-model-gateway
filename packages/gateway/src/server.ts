@@ -16,6 +16,7 @@ import { registerOpenAiRoutes } from './openai-routes.js';
 import { Scheduler } from '@local-model-gateway/core';
 import { registerTools } from './tools/index.js';
 import type { ActiveRuntimeSettings, GatewayConfig } from '@local-model-gateway/core';
+import { registerDashboardRoute } from './dashboard.js';
 
 function applyRuntimeSettings(
   envConfig: GatewayConfig,
@@ -40,6 +41,7 @@ function authorized(request: Request, authToken: string): boolean {
 
 function gatewayUrls(config: GatewayConfig): {
   base: string;
+  dashboard: string;
   mcp: string;
   openai: string;
   status: string;
@@ -47,10 +49,19 @@ function gatewayUrls(config: GatewayConfig): {
   const base = `http://${config.host}:${config.port}`;
   return {
     base,
+    dashboard: `${base}/dashboard`,
     mcp: `${base}/mcp`,
     openai: `${base}/v1`,
     status: `${base}/status`,
   };
+}
+
+export function publicGatewayPath(pathname: string): boolean {
+  return (
+    pathname === '/health' ||
+    pathname === '/dashboard' ||
+    pathname === '/.well-known/local-model-gateway.json'
+  );
 }
 
 export function discoveryManifest(
@@ -99,6 +110,7 @@ export function discoveryManifest(
     openai_base_url: urls.openai,
     mcp_url: urls.mcp,
     status_url: urls.status,
+    dashboard_url: urls.dashboard,
     default_model: activeSettings.defaultModel,
     auth_required: Boolean(config.authToken),
     models: [...loraModels, ...runtimeModels, ...externalModels].sort((a, b) => a.id.localeCompare(b.id)),
@@ -190,10 +202,7 @@ export async function startGateway(): Promise<void> {
 
   const app = server.getApp();
   app.use('*', async (c, next) => {
-    if (
-      c.req.path === '/health' ||
-      c.req.path === '/.well-known/local-model-gateway.json'
-    ) {
+    if (publicGatewayPath(c.req.path)) {
       await next();
       return;
     }
@@ -205,6 +214,8 @@ export async function startGateway(): Promise<void> {
     }
     await next();
   });
+
+  registerDashboardRoute(app, Boolean(config.authToken));
 
   registerOpenAiRoutes(
     app,

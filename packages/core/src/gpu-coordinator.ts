@@ -214,11 +214,15 @@ export class GpuCoordinator {
 
     const activeWork = this.store.listRunningGpuWorkItems().map((item) => ({
       activeDurationMs: ageMs(item.startedAt),
+      ageMs: ageMs(item.createdAt) ?? 0,
       id: item.id,
       kind: item.kind,
       model: item.model,
+      priority: item.priority,
       publicJobId: item.publicJobId,
       source: item.source,
+      state: item.state,
+      type: item.kind,
     }));
 
     return {

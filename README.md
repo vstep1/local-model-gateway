@@ -57,6 +57,7 @@ Local Model Gateway gives those moving parts one admission layer.
 | MCP endpoint | Runtime control and setup tools over Streamable HTTP at `/mcp`. |
 | Durable GPU queue | SQLite-backed priority/FIFO work admission across URL and MCP entrypoints. |
 | Runtime residency | Starts, health-checks, unloads, and swaps managed local runtimes on demand. |
+| Browser dashboard | Read-only `/dashboard` view for loaded models, active work, and queued GPU requests. |
 | Launch adapters | macOS launchd and generic shell helpers now, with systemd/Docker planned. |
 | Lazy MCP broker | Keeps downstream MCP catalogs out of the prompt until a tool is actually searched or described. |
 | Discovery manifest | `/.well-known/local-model-gateway.json` for clients that want model, timeout, and endpoint hints. |
@@ -111,6 +112,7 @@ Default endpoints:
 | OpenAI-compatible API | `http://127.0.0.1:8787/v1` |
 | MCP Streamable HTTP | `http://127.0.0.1:8787/mcp` |
 | Status | `http://127.0.0.1:8787/status` |
+| Dashboard | `http://127.0.0.1:8787/dashboard` |
 | Discovery manifest | `http://127.0.0.1:8787/.well-known/local-model-gateway.json` |
 
 Smoke check:
@@ -118,6 +120,7 @@ Smoke check:
 ```bash
 curl http://127.0.0.1:8787/health
 curl http://127.0.0.1:8787/status
+open http://127.0.0.1:8787/dashboard
 curl http://127.0.0.1:8787/v1/models
 curl http://127.0.0.1:8787/.well-known/local-model-gateway.json
 ```
