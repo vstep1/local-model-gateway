@@ -24,10 +24,6 @@ active work uninterrupted:
 
 [Watch the MP4 demo](docs/assets/local-model-gateway-cli-demo.mp4).
 
-For a tighter visual of the scheduler behavior across concurrent clients:
-
-[Watch the multiprocess scheduler demo](docs/assets/local-model-gateway-multiprocess-demo.mp4).
-
 ## Why This Exists
 
 Local models are easy to start and hard to coordinate.
@@ -282,7 +278,7 @@ Near-term:
 - richer `doctor` checks for actual runtime service readiness
 - end-to-end fake-runtime smoke tests for streaming, cancellation, and swaps
 - npm publish workflow for the CLI package
-- richer screenshots and terminal recordings for setup flows beyond the demos
+- richer screenshots and terminal recordings for setup flows beyond the main demo
 
 Later:
 
