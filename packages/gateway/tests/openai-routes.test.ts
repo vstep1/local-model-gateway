@@ -102,6 +102,7 @@ async function createOpenAiApp(): Promise<{
     port: 8787,
     repeatPenalty: 1.0,
     schedulerPollMs: 5,
+    startupModels: {},
     temperature: 0.8,
     timeoutMs: 10_000,
     topP: 0.95,

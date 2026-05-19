@@ -67,6 +67,8 @@ describe('gateway config', () => {
           '  port: 8787',
           'paths:',
           '  data_dir: ./state',
+          'startup_models:',
+          '  ep2: ./models/ep2.gguf',
           'runtimes:',
           '  qwen3-32b:',
           '    base_url: http://127.0.0.1:18001/v1',
@@ -80,6 +82,7 @@ describe('gateway config', () => {
       const config = resolveGatewayConfig({ rootDir: root });
       assert.equal(config.port, 9999);
       assert.equal(config.dataDir, path.join(root, 'state'));
+      assert.deepEqual(config.startupModels, { ep2: path.join(root, 'models/ep2.gguf') });
       assert.equal(config.managedRuntimes[0].serviceScript, path.join(root, 'runtime/qwen.sh'));
       assert.equal(config.managedRuntimes[0].contextWindow, 131072);
     });

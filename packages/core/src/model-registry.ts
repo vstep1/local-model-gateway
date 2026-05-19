@@ -18,8 +18,7 @@ export class ModelRegistry {
   ) {}
 
   async syncStartup(): Promise<SyncResult> {
-    const sourceMap = await this.resolveStartupSourceMap();
-    return this.syncFromSourceMap(sourceMap);
+    return this.syncFromSourceMap(this.config.startupModels);
   }
 
   async syncFromSourceMap(sourceMap: Record<string, string>): Promise<SyncResult> {
@@ -111,24 +110,6 @@ export class ModelRegistry {
     }
 
     return removed;
-  }
-
-  private async resolveStartupSourceMap(): Promise<Record<string, string>> {
-    const candidates = [
-      path.resolve(
-        this.config.modelSourceDir,
-        'ep2',
-        'adlib-qwen3-8b-ep2-lora-f16.gguf',
-      ),
-    ];
-
-    for (const candidate of candidates) {
-      if (await this.fileExists(candidate)) {
-        return { ep2: candidate };
-      }
-    }
-
-    return { ep2: candidates[0] };
   }
 
   private async copyIntoManagedStorage(alias: string, sourcePath: string): Promise<string> {

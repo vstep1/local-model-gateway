@@ -52,6 +52,7 @@ export function defaultConfig(env: EnvironmentInfo): Record<string, unknown> {
       base_model_path: './runtime/base.gguf',
     },
     default_model: 'ep2',
+    startup_models: {},
     queue: {
       max_queue: 100,
       max_queue_wait_ms: 300000,

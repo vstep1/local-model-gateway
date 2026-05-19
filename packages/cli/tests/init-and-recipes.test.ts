@@ -25,6 +25,7 @@ describe('cli init', () => {
     assert.equal(runtimes['qwen3-32b'].enabled, false);
     assert.equal(runtimes['minimax-m2.7'].enabled, false);
     assert.equal(runtimes['qwen3-32b'].service_script, './runtime-adapters/qwen3-32b-service.sh');
+    assert.deepEqual(cfg.startup_models, {});
     assert.doesNotMatch(JSON.stringify(cfg), /\/Users\/vs|com\.vs/);
   });
 

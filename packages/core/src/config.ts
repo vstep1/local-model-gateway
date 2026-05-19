@@ -227,6 +227,15 @@ function runtimeRecords(configFile: JsonRecord): JsonRecord[] {
   }));
 }
 
+function parseStartupModels(configFile: JsonRecord, configDir: string): Record<string, string> {
+  const raw = asRecord(configFile.startup_models ?? configFile.startupModels);
+  return Object.fromEntries(
+    Object.entries(raw)
+      .map(([alias, sourcePath]) => [alias.trim(), resolveMaybeRelative(String(sourcePath), configDir)] as const)
+      .filter(([alias, sourcePath]) => Boolean(alias && sourcePath)),
+  );
+}
+
 function parseManagedRuntimes(configFile: JsonRecord, timeoutMs: number, configDir: string): ManagedRuntimeConfig[] {
   let records = runtimeRecords(configFile);
   const rawJson = readStringEnv(['LOCAL_AI_GATEWAY_MANAGED_RUNTIMES', 'LOCAL_GPU_GATEWAY_MANAGED_RUNTIMES'], '');
@@ -406,6 +415,7 @@ export function resolveGatewayConfig(options: ResolveGatewayConfigOptions = {}):
       asNumber(generation.repeat_penalty ?? generation.repeatPenalty, 1.0),
     ),
     schedulerPollMs: asNumber(queue.scheduler_poll_ms ?? queue.schedulerPollMs, 250),
+    startupModels: parseStartupModels(configFile, configDir),
     temperature: readNumberEnv(
       ['LOCAL_AI_GATEWAY_TEMPERATURE', 'LOCAL_GPU_GATEWAY_TEMPERATURE'],
       asNumber(generation.temperature, 0.8),

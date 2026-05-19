@@ -124,6 +124,7 @@ export interface GatewayConfig {
   openAiUpstreams: OpenAiUpstreamConfig[];
   managedRuntimes: ManagedRuntimeConfig[];
   allowUnmanagedLocalUpstreams: boolean;
+  startupModels: Record<string, string>;
 }
 
 export interface OpenAiUpstreamConfig {

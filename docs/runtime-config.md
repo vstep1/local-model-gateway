@@ -16,3 +16,7 @@ script. Each runtime needs:
 External OpenAI-compatible APIs can be listed under `openai_upstreams`; they are
 passive proxies and are not part of local GPU residency management.
 
+LoRA adapters that should be imported at startup can be listed under
+`startup_models` as `alias: ./path/to/adapter.gguf`. The default quick-start
+config leaves this empty so a clean install starts without workstation-specific
+model files.
