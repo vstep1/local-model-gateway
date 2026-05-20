@@ -15,10 +15,13 @@ describe('browser dashboard', () => {
 
     assert.match(html, /id="dashboard-root"/);
     assert.equal(html.includes('STATUS_PATH = "/status"'), true);
-    assert.match(html, /POLL_MS = 1500/);
+    assert.match(html, /POLL_MS = 1000/);
+    assert.match(html, /LIVE_TICK_MS = 250/);
+    assert.match(html, /cache: 'no-store'/);
     assert.match(html, /sessionStorage/);
     assert.match(html, /managed_runtimes/);
     assert.match(html, /gpu_queue/);
+    assert.match(html, /renderTable\('gpu-queue', queuedItems\(status\)/);
     assert.match(html, /Model load/);
     assert.match(html, /Inference prefill/);
     assert.match(html, /Throughput/);

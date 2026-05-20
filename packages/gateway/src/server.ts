@@ -231,6 +231,7 @@ export async function startGateway(): Promise<void> {
   ));
 
   app.get('/status', async (c) => {
+    c.header('Cache-Control', 'no-store');
     return c.json(redactForStatus({
       config: {
         [CONFIG_KEYS.DEFAULT_MODEL]: activeSettings.defaultModel,

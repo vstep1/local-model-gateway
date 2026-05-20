@@ -239,14 +239,20 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
   <script>
     const STATUS_PATH = ${JSON.stringify(statusPath)};
     const AUTH_REQUIRED = ${boolAttr(options.authRequired)};
-    const POLL_MS = 1500;
+    const POLL_MS = 1000;
+    const LIVE_TICK_MS = 250;
     const tokenPanel = document.getElementById('token-panel');
     const tokenInput = document.getElementById('token-input');
     const errorBanner = document.getElementById('error-banner');
     const lastUpdated = document.getElementById('last-updated');
     const toggle = document.getElementById('toggle-polling');
     let paused = false;
-    let timer = null;
+    let pollTimer = null;
+    let liveTimer = null;
+    let lastStatus = null;
+    let lastStatusAt = 0;
+    let requestSeq = 0;
+    let requestInFlight = false;
 
     function text(value, fallback = '-') {
       if (value === undefined || value === null || value === '') return fallback;
@@ -299,6 +305,54 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     function fmtPercent(value) {
       if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
       return Math.round(Math.max(0, Math.min(1, value)) * 100) + '%';
+    }
+
+    function clamp01(value) {
+      return Math.max(0, Math.min(1, value));
+    }
+
+    function liveMs(value, elapsedMs) {
+      return typeof value === 'number' && Number.isFinite(value) ? value + elapsedMs : value;
+    }
+
+    function liveStatus() {
+      if (!lastStatus) return null;
+      const elapsedMs = Math.max(0, Date.now() - lastStatusAt);
+      const cloned = JSON.parse(JSON.stringify(lastStatus));
+      cloned.uptime_seconds = typeof cloned.uptime_seconds === 'number'
+        ? cloned.uptime_seconds + elapsedMs / 1000
+        : cloned.uptime_seconds;
+      cloned.active_work = Array.isArray(cloned.active_work)
+        ? cloned.active_work.map((item) => {
+          const next = {
+            ...item,
+            activeDurationMs: liveMs(item.activeDurationMs, elapsedMs),
+            ageMs: liveMs(item.ageMs, elapsedMs),
+            upstreamElapsedMs: liveMs(item.upstreamElapsedMs, elapsedMs),
+          };
+          const bytes = (Number(next.requestBytes) || 0) + (Number(next.responseBytes) || 0);
+          const seconds = typeof next.upstreamElapsedMs === 'number' && next.upstreamElapsedMs > 0
+            ? next.upstreamElapsedMs / 1000
+            : 0;
+          if (seconds > 0) next.bandwidthBps = Math.round(bytes / seconds);
+          return next;
+        })
+        : [];
+      cloned.gpu_queue = Array.isArray(cloned.gpu_queue)
+        ? cloned.gpu_queue.map((item) => ({ ...item, ageMs: liveMs(item.ageMs, elapsedMs) }))
+        : [];
+      cloned.managed_runtimes = Array.isArray(cloned.managed_runtimes)
+        ? cloned.managed_runtimes.map((runtime) => {
+          if (runtime.state !== 'loading' || !runtime.loadStartedAt) return runtime;
+          const loadElapsedMs = Math.max(0, Date.now() - Date.parse(runtime.loadStartedAt));
+          return {
+            ...runtime,
+            loadElapsedMs,
+            loadProgress: clamp01(Math.max(0.02, Math.min(0.98, loadElapsedMs / Math.max(runtime.loadTimeoutMs || 1, 1)))),
+          };
+        })
+        : [];
+      return cloned;
     }
 
     function stateClass(state) {
@@ -438,7 +492,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
         { key: 'publicJobId', label: 'job' },
         { key: 'type', label: 'type', format: workType },
       ], 'No active GPU work.');
-      renderTable('gpu-queue', status.gpu_queue, [
+      renderTable('gpu-queue', queuedItems(status), [
         { key: 'id', label: 'id' },
         { key: 'source', label: 'source' },
         { key: 'model', label: 'model' },
@@ -448,6 +502,17 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
         { key: 'publicJobId', label: 'job' },
         { key: 'type', label: 'type', format: workType },
       ], 'No queued GPU work.');
+    }
+
+    function renderStatus(status) {
+      renderSummary(status);
+      renderTelemetry(status);
+      renderRuntimes(status.managed_runtimes);
+      renderWork(status);
+      if (lastStatusAt) {
+        const age = Math.max(0, Date.now() - lastStatusAt);
+        lastUpdated.textContent = 'Updated ' + new Date(lastStatusAt).toLocaleTimeString() + ' · ' + fmtMs(age) + ' ago';
+      }
     }
 
     function showError(message) {
@@ -461,11 +526,16 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     }
 
     async function refreshStatus() {
+      if (requestInFlight) return;
+      requestInFlight = true;
+      const seq = requestSeq + 1;
+      requestSeq = seq;
       const headers = {};
       const token = sessionStorage.getItem('local-model-gateway-token') || '';
       if (token) headers.Authorization = 'Bearer ' + token;
       try {
-        const response = await fetch(STATUS_PATH, { headers });
+        const response = await fetch(STATUS_PATH, { cache: 'no-store', headers });
+        if (seq !== requestSeq) return;
         if (response.status === 401) {
           tokenPanel.classList.add('visible');
           showError('Status request was rejected. Enter the bearer token to continue.');
@@ -474,21 +544,27 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
         if (!response.ok) throw new Error('HTTP ' + response.status);
         const status = await response.json();
         clearError();
-        renderSummary(status);
-        renderTelemetry(status);
-        renderRuntimes(status.managed_runtimes);
-        renderWork(status);
-        lastUpdated.textContent = 'Updated ' + new Date().toLocaleTimeString();
+        lastStatus = status;
+        lastStatusAt = Date.now();
+        renderStatus(status);
       } catch (error) {
         showError('Could not refresh status: ' + (error instanceof Error ? error.message : String(error)));
+      } finally {
+        if (seq === requestSeq) requestInFlight = false;
       }
     }
 
     function schedule() {
-      if (timer) window.clearInterval(timer);
-      timer = window.setInterval(() => {
+      if (pollTimer) window.clearInterval(pollTimer);
+      if (liveTimer) window.clearInterval(liveTimer);
+      pollTimer = window.setInterval(() => {
         if (!paused) void refreshStatus();
       }, POLL_MS);
+      liveTimer = window.setInterval(() => {
+        if (paused) return;
+        const status = liveStatus();
+        if (status) renderStatus(status);
+      }, LIVE_TICK_MS);
     }
 
     tokenInput.value = sessionStorage.getItem('local-model-gateway-token') || '';
