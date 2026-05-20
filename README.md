@@ -2,8 +2,10 @@
 
 [![CI](https://github.com/vstep1/local-model-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/vstep1/local-model-gateway/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE) [![Node](https://img.shields.io/badge/node-%3E%3D22-blue.svg)](package.json) [![Release](https://img.shields.io/github/v/release/vstep1/local-model-gateway?label=release&color=brightgreen)](https://github.com/vstep1/local-model-gateway/releases) [![Protocols](https://img.shields.io/badge/protocols-OpenAI%20%2B%20MCP-purple.svg)](#protocols)
 
-Local Model Gateway is a local-first control plane for running agent workloads on
-one workstation GPU.
+Local Model Gateway is lightweight local AI workstation management.
+
+One endpoint, scheduler, and dashboard for coordinating model access across
+local agents and LLM apps.
 
 It exposes a stable OpenAI-compatible API and a Streamable HTTP MCP endpoint,
 then puts all GPU-bound work behind one SQLite-backed scheduler. Agents can ask
@@ -17,9 +19,9 @@ Works with:
 
 ## Demo
 
-Watch a 58-second demo of multiple local clients sharing one OpenAI-compatible
-endpoint while the gateway queues requests, swaps model residency, and keeps
-active work uninterrupted:
+Watch a 58-second demo of multiple local clients sharing one endpoint while the
+gateway queues requests, swaps model residency, and keeps active work
+uninterrupted:
 
 https://github.com/user-attachments/assets/d48e4422-46f5-4355-bfa3-7a964bde9a6b
 
@@ -38,7 +40,8 @@ that breaks down quickly:
 - loading every MCP tool schema into an agent prompt wastes context before the
   user asks for any tool
 
-Local Model Gateway gives those moving parts one admission layer.
+Local Model Gateway gives those moving parts one shared scheduler and a browser
+dashboard.
 
 ## Use Cases
 
@@ -57,7 +60,7 @@ Local Model Gateway gives those moving parts one admission layer.
 | MCP endpoint | Runtime control and setup tools over Streamable HTTP at `/mcp`. |
 | Durable GPU queue | SQLite-backed priority/FIFO work admission across URL and MCP entrypoints. |
 | Runtime residency | Starts, health-checks, unloads, and swaps managed local runtimes on demand. |
-| Browser dashboard | Read-only `/dashboard` view for loaded models, active work, and queued GPU requests. |
+| Browser dashboard | Read-only `/dashboard` view for loaded models, load progress, prefill, bandwidth, active work, and queued GPU requests. |
 | Launch adapters | macOS launchd and generic shell helpers now, with systemd/Docker planned. |
 | Lazy MCP broker | Keeps downstream MCP catalogs out of the prompt until a tool is actually searched or described. |
 | Discovery manifest | `/.well-known/local-model-gateway.json` for clients that want model, timeout, and endpoint hints. |
@@ -297,15 +300,16 @@ package dry run.
 
 Near-term:
 
+- dashboard controls for cancel, unload, and start runtime actions
 - richer `doctor` checks for actual runtime service readiness
-- end-to-end fake-runtime smoke tests for streaming, cancellation, and swaps
+- model/runtime templates for common local workstation setups
 - npm publish workflow for the CLI package
-- richer screenshots and terminal recordings for setup flows beyond the main demo
+- stronger demo coverage for multi-agent local workstation workflows
 
 Later:
 
 - runtime auto-detection recipes for common local model servers
-- web dashboard for queue and residency state
+- Linux systemd and Docker runtime adapters beyond the current stubs
 - stronger broker policies for metered/write tools with confirmations
 - portable service installer templates beyond launchd
 

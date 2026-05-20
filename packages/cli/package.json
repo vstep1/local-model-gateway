@@ -1,7 +1,7 @@
 {
   "name": "local-model-gateway",
   "version": "0.2.0",
-  "description": "CLI for installing, configuring, and running Local Model Gateway.",
+  "description": "CLI for lightweight local AI workstation management.",
   "license": "MIT",
   "type": "module",
   "bin": {

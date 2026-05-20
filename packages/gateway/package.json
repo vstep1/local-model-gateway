@@ -1,7 +1,7 @@
 {
   "name": "@local-model-gateway/gateway",
   "version": "0.2.0",
-  "description": "OpenAI-compatible HTTP and MCP gateway for Local Model Gateway.",
+  "description": "OpenAI-compatible HTTP and MCP gateway for local AI workstation management.",
   "license": "MIT",
   "type": "module",
   "main": "dist/src/index.js",
