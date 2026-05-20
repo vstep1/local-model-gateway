@@ -47,10 +47,34 @@ dashboard.
 
 - Run several local agents through one OpenAI-compatible base URL without
   letting them fight over the same GPU.
+- Point local LLM apps, scripts, and CLIs at one model endpoint while the gateway
+  handles queueing and runtime swaps.
 - Swap between different local model runtimes only when active work drains, so
   long requests are not interrupted mid-stream.
 - Keep large MCP tool catalogs out of an agent prompt until a tool is actually
   searched, described, or called.
+
+## What It Is
+
+Local Model Gateway is:
+
+- a local model gateway for OpenAI-compatible clients
+- a shared scheduler for GPU-bound local model work
+- a runtime residency manager for loading, unloading, and swapping local models
+- a browser dashboard for seeing loaded models, active work, queued requests,
+  prefill, and transfer telemetry
+- an MCP runtime surface for agents that need status, model discovery, setup
+  snippets, and cancellation tools
+
+It is not:
+
+- a replacement for `llama.cpp`, Ollama, LM Studio, or vLLM
+- a model downloader or model marketplace
+- a hosted inference service
+- a framework-specific integration layer
+
+The intent is to sit in front of local runtimes and make a workstation usable by
+multiple local agents and LLM apps at the same time.
 
 ## What You Get
 
@@ -85,6 +109,16 @@ coordinator. OpenAI URL requests, MCP `submit_job` requests, and exclusive
 `llama-cli` work all queue through the same admission policy.
 
 ## Quick Start
+
+Current status:
+
+- macOS is the best-supported workstation path today.
+- Source install is the recommended install path until the CLI is published to
+  npm.
+- Fresh configs are safe by default: heavyweight runtime presets are generated
+  disabled until you wire them to working local service scripts.
+- Linux systemd and Docker examples exist as stubs, but they are not the primary
+  tested path yet.
 
 Source install:
 
