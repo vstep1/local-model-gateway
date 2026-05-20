@@ -128,6 +128,7 @@ function runtime(alias: string, baseUrl: string, maxConcurrency = 1): ManagedRun
     enabled: true,
     healthUrl: `${baseUrl}/models`,
     idleTtlMs: 60_000,
+    loadProgressPath: null,
     loadTimeoutMs: 1000,
     maxConcurrency,
     recommendedPromptBudget: null,
@@ -274,6 +275,8 @@ describe('gpu coordinator', () => {
 
   it('reports model load progress while a runtime is starting', async () => {
     const qwen = await startFakeOpenAiServer('qwen');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-load-progress-'));
+    const progressPath = path.join(root, 'qwen-progress.json');
     const store = createStore();
     let healthy = false;
     let releaseStart!: () => void;
@@ -281,12 +284,13 @@ describe('gpu coordinator', () => {
       releaseStart = resolve;
     });
     const coordinator = new GpuCoordinator(
-      [runtime('qwen3-32b', qwen.baseUrl)],
+      [{ ...runtime('qwen3-32b', qwen.baseUrl), loadProgressPath: progressPath }],
       store,
       {
         isHealthy: async () => healthy,
         runServiceCommand: async (_config, args) => {
           if (args[0] === 'start') {
+            await fs.writeFile(progressPath, JSON.stringify({ progress: 0.42 }), 'utf8');
             await startGate;
             healthy = true;
           }
@@ -307,8 +311,8 @@ describe('gpu coordinator', () => {
       const loading = coordinator.status().managed_runtimes[0];
       assert.equal(loading.loadPhase, 'starting_service');
       assert.equal(typeof loading.loadElapsedMs, 'number');
-      assert.equal(typeof loading.loadProgress, 'number');
-      assert.ok((loading.loadProgress ?? 0) > 0);
+      assert.equal(loading.loadProgress, 0.42);
+      assert.equal(loading.loadProgressSource, 'progress_file');
 
       releaseStart();
       await qwen.waitForRequests(1);
@@ -316,6 +320,7 @@ describe('gpu coordinator', () => {
       assert.equal(await (await request).json().then((body: any) => body.choices[0].message.content), 'loaded');
     } finally {
       store.close();
+      await fs.rm(root, { force: true, recursive: true });
       await qwen.close();
     }
   });

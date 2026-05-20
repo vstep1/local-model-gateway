@@ -273,6 +273,9 @@ function parseManagedRuntimes(configFile: JsonRecord, timeoutMs: number, configD
         enabled: asBoolean(record.enabled, true),
         healthUrl,
         idleTtlMs: asNumber(record.idleTtlMs ?? record.idle_ttl_ms, 600_000),
+        loadProgressPath: record.loadProgressPath || record.load_progress_path
+          ? resolveMaybeRelative(String(record.loadProgressPath ?? record.load_progress_path), configDir)
+          : null,
         loadTimeoutMs: asNumber(record.loadTimeoutMs ?? record.load_timeout_ms, timeoutMs),
         maxConcurrency: Math.max(1, asNumber(record.maxConcurrency ?? record.max_concurrency, 1)),
         recommendedPromptBudget: asNullableNumber(

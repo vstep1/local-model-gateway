@@ -34,6 +34,7 @@ function config(): GatewayConfig {
         enabled: true,
         healthUrl: 'http://127.0.0.1:18001/v1/models',
         idleTtlMs: 600000,
+        loadProgressPath: null,
         loadTimeoutMs: 900000,
         maxConcurrency: 1,
         recommendedPromptBudget: 98304,

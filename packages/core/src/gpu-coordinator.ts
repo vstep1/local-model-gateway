@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { GatewayStore } from './db.js';
@@ -44,6 +45,42 @@ function byteLength(value: string): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function normalizeProgress(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return clamp(numeric > 1 ? numeric / 100 : numeric, 0, 1);
+}
+
+function findProgressInObject(value: unknown): number | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  for (const key of ['progress', 'load_progress', 'loadProgress', 'percent', 'percentage']) {
+    const progress = normalizeProgress(record[key]);
+    if (progress !== null) return progress;
+  }
+  return null;
+}
+
+function parseProgressText(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    const progress = findProgressInObject(parsed);
+    if (progress !== null) return progress;
+  } catch {
+    // Plain-text progress files are also supported.
+  }
+
+  const direct = normalizeProgress(trimmed);
+  if (direct !== null) return direct;
+
+  const matches = Array.from(trimmed.matchAll(/(\d{1,3}(?:\.\d+)?)\s*%/g));
+  const last = matches.at(-1);
+  return last ? normalizeProgress(last[1]) : null;
 }
 
 class GpuAdmissionError extends Error {
@@ -673,6 +710,7 @@ export class GpuCoordinator {
     runtime.loadPhase = 'starting_service';
     runtime.loadStartedAt = nowIso();
     try {
+      this.resetRuntimeLoadProgress(runtime.config);
       await this.runServiceCommand(
         runtime.config,
         runtime.config.startArgs,
@@ -895,6 +933,7 @@ export class GpuCoordinator {
     loadElapsedMs: number | null;
     loadPhase: string | null;
     loadProgress: number | null;
+    loadProgressSource: string | null;
     loadStartedAt: string | null;
   } {
     if (runtime.state === 'loaded') {
@@ -902,6 +941,7 @@ export class GpuCoordinator {
         loadElapsedMs: null,
         loadPhase: runtime.loadPhase ?? 'ready',
         loadProgress: 1,
+        loadProgressSource: 'health',
         loadStartedAt: null,
       };
     }
@@ -911,17 +951,43 @@ export class GpuCoordinator {
         loadElapsedMs: null,
         loadPhase: runtime.loadPhase,
         loadProgress: null,
+        loadProgressSource: null,
         loadStartedAt: runtime.loadStartedAt,
       };
     }
 
     const elapsed = ageMs(runtime.loadStartedAt) ?? 0;
+    const fileProgress = this.readRuntimeLoadProgress(runtime.config);
     return {
       loadElapsedMs: elapsed,
       loadPhase: runtime.loadPhase,
-      loadProgress: clamp(elapsed / Math.max(runtime.config.loadTimeoutMs, 1), 0.02, 0.98),
+      loadProgress: fileProgress,
+      loadProgressSource: fileProgress === null ? null : 'progress_file',
       loadStartedAt: runtime.loadStartedAt,
     };
+  }
+
+  private readRuntimeLoadProgress(runtime: ManagedRuntimeConfig): number | null {
+    if (!runtime.loadProgressPath) return null;
+    try {
+      return parseProgressText(readFileSync(runtime.loadProgressPath, 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
+  private resetRuntimeLoadProgress(runtime: ManagedRuntimeConfig): void {
+    if (!runtime.loadProgressPath) return;
+    try {
+      mkdirSync(dirname(runtime.loadProgressPath), { recursive: true });
+      writeFileSync(
+        runtime.loadProgressPath,
+        JSON.stringify({ phase: 'starting', updated_at: nowIso() }) + '\n',
+        'utf8',
+      );
+    } catch {
+      // Progress files are optional telemetry; failing to write one must not block loading.
+    }
   }
 
   private telemetryStatus(workItemId: string): {

@@ -34,6 +34,7 @@ runtimes:
     base_url: http://127.0.0.1:18001/v1
     health_url: http://127.0.0.1:18001/v1/models
     service_script: ./runtime-adapters/qwen3-32b-service.sh
+    load_progress_path: ./runtime-adapters/qwen3-32b-load-progress.json
     start_args: [start]
     stop_args: [stop]
     idle_ttl_ms: 600000
@@ -49,6 +50,7 @@ runtimes:
     base_url: http://127.0.0.1:8000/v1
     health_url: http://127.0.0.1:8000/v1/models
     service_script: ./runtime-adapters/minimax-m27-service.sh
+    load_progress_path: ./runtime-adapters/minimax-m2.7-load-progress.json
     start_args: [start]
     stop_args: [stop]
     idle_ttl_ms: 3600000

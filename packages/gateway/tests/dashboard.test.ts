@@ -26,6 +26,8 @@ describe('browser dashboard', () => {
     assert.match(html, /Inference prefill/);
     assert.match(html, /Throughput/);
     assert.match(html, /bandwidthBps/);
+    assert.match(html, /Actual load progress unavailable/);
+    assert.match(html, /no runtime progress signal/);
   });
 
   it('allows dashboard without auth while keeping status protected', async () => {

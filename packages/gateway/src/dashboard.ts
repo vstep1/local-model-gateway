@@ -63,6 +63,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     button { cursor: pointer; }
     button:hover { border-color: var(--blue); }
     input { min-width: min(420px, 100%); }
+    .metric, .panel, .runtime-card, .telemetry-card { min-width: 0; }
     .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
     .token-panel {
       display: none;
@@ -98,13 +99,13 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     }
     .metric { padding: 14px; min-height: 92px; }
     .label { color: var(--muted); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0; margin-bottom: 9px; }
-    .value { font-family: Menlo, Consolas, ui-monospace, monospace; font-size: 1.03rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .value { font-family: Menlo, Consolas, ui-monospace, monospace; font-size: 1.03rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
     .value.large { font-size: 1.35rem; font-weight: 700; }
     .metric-sub { margin-top: 7px; color: var(--muted); font-size: 0.8rem; }
     .grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
     .panel { padding: 16px; overflow: hidden; }
-    .runtime-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
-    .runtime-card { padding: 14px; }
+    .runtime-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; }
+    .runtime-card { padding: 14px; overflow: hidden; }
     .runtime-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
     .runtime-name, .mono { font-family: Menlo, Consolas, ui-monospace, monospace; }
     .runtime-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -126,8 +127,13 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     .state-queued { background: var(--amber); }
     .state-failed, .state-timed_out, .state-cancelled { background: var(--red); }
     .state-unloading { background: var(--purple); }
-    .kv { display: grid; grid-template-columns: 120px 1fr; gap: 6px 10px; font-size: 0.88rem; }
+    .kv { display: grid; grid-template-columns: minmax(92px, 120px) minmax(0, 1fr); gap: 6px 10px; font-size: 0.88rem; }
     .kv span:nth-child(odd) { color: var(--muted); }
+    .kv span:nth-child(even), .error-lines, .telemetry-card p, .metric-sub {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
     .progress {
       position: relative;
       height: 9px;
@@ -142,6 +148,10 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       border-radius: inherit;
       background: var(--blue);
       transition: width 220ms ease;
+    }
+    .progress.indeterminate .progress-bar {
+      width: 38%;
+      animation: indeterminate 1.15s ease-in-out infinite;
     }
     .progress-bar.loaded, .progress-bar.streaming { background: var(--green); }
     .progress-bar.queued { background: var(--amber); }
@@ -184,6 +194,10 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     .empty { color: var(--muted); padding: 18px 0; }
     .last-updated { color: var(--muted); font-size: 0.88rem; }
     .error-lines { margin-top: 10px; color: #fecdd3; font-size: 0.84rem; display: grid; gap: 4px; }
+    @keyframes indeterminate {
+      0% { transform: translateX(-110%); }
+      100% { transform: translateX(280%); }
+    }
     @media (max-width: 900px) {
       header { display: block; }
       .controls { justify-content: flex-start; margin-top: 18px; }
@@ -348,7 +362,9 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
           return {
             ...runtime,
             loadElapsedMs,
-            loadProgress: clamp01(Math.max(0.02, Math.min(0.98, loadElapsedMs / Math.max(runtime.loadTimeoutMs || 1, 1)))),
+            loadProgress: typeof runtime.loadProgress === 'number'
+              ? clamp01(runtime.loadProgress)
+              : null,
           };
         })
         : [];
@@ -360,10 +376,12 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     }
 
     function progressBar(value, cls = '') {
+      const indeterminate = (value === undefined || value === null) && cls === 'loading';
       const percent = typeof value === 'number' && Number.isFinite(value)
         ? Math.round(Math.max(0, Math.min(1, value)) * 100)
         : 0;
-      return '<div class="progress" title="' + percent + '%"><div class="progress-bar ' + escapeHtml(cls) + '" style="width: ' + percent + '%"></div></div>';
+      const title = indeterminate ? 'Actual load progress unavailable' : percent + '%';
+      return '<div class="progress ' + (indeterminate ? 'indeterminate' : '') + '" title="' + escapeHtml(title) + '"><div class="progress-bar ' + escapeHtml(cls) + '" style="' + (indeterminate ? '' : 'width: ' + percent + '%') + '"></div></div>';
     }
 
     function metric(label, value, large = false, sub = '') {
@@ -396,7 +414,11 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       const active = activeItems(status).length;
       const queue = queuedItems(status).length;
       const totals = telemetryTotals(status);
-      const loadingProgress = totals.loadingRuntime ? fmtPercent(totals.loadingRuntime.loadProgress) + ' est' : 'idle';
+      const loadingProgress = totals.loadingRuntime
+        ? totals.loadingRuntime.loadProgressSource === 'progress_file'
+          ? fmtPercent(totals.loadingRuntime.loadProgress) + ' actual'
+          : 'progress unavailable'
+        : 'idle';
       document.getElementById('summary').innerHTML = [
         metric('Loaded model', status.loaded_model ?? 'none'),
         metric('Loading model', status.loading_model ?? 'none', false, loadingProgress),
@@ -413,7 +435,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       document.getElementById('telemetry-strip').innerHTML = [
         '<article class="telemetry-card"><div class="label">Model load</div><strong>' + escapeHtml(loading ? loading.alias : 'No active load') + '</strong>'
           + progressBar(loading ? loading.loadProgress : 0, loading ? 'loading' : '')
-          + '<p>' + escapeHtml(loading ? ((loading.loadPhase || 'loading') + ' · ' + fmtMs(loading.loadElapsedMs) + ' / ' + fmtMs(loading.loadTimeoutMs) + ' estimated') : 'Loaded runtimes stay visible below.') + '</p></article>',
+          + '<p>' + escapeHtml(loading ? ((loading.loadPhase || 'loading') + ' · ' + fmtMs(loading.loadElapsedMs) + (loading.loadProgressSource === 'progress_file' ? ' · actual progress' : ' · no runtime progress signal')) : 'Loaded runtimes stay visible below.') + '</p></article>',
         '<article class="telemetry-card"><div class="label">Inference prefill</div><strong>' + escapeHtml(totals.waitingForFirstByte + ' waiting for first byte') + '</strong>'
           + progressBar(activeItems(status).length ? Math.max(0.05, totals.waitingForFirstByte / activeItems(status).length) : 0, 'queued')
           + '<p>Requests in prefill have reached the runtime but have not streamed output yet.</p></article>',
@@ -442,6 +464,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
           + '<span>active</span><span>' + escapeHtml(runtime.activeRequests) + ' / ' + escapeHtml(runtime.maxConcurrency) + '</span>'
           + '<span>queued</span><span>' + escapeHtml(runtime.queuedRequests) + '</span>'
           + '<span>load phase</span><span>' + escapeHtml(runtime.loadPhase) + '</span>'
+          + '<span>progress</span><span>' + escapeHtml(runtime.loadProgressSource === 'progress_file' ? fmtPercent(runtime.loadProgress) + ' actual' : runtime.state === 'loading' ? 'not exposed' : fmtPercent(runtime.loadProgress)) + '</span>'
           + '<span>load elapsed</span><span>' + escapeHtml(fmtMs(runtime.loadElapsedMs)) + '</span>'
           + '<span>last used</span><span>' + escapeHtml(runtime.lastUsedAt) + '</span>'
           + '<span>upstream</span><span class="mono">' + escapeHtml(runtime.upstreamModel) + '</span>'

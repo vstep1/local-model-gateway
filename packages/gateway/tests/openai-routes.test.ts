@@ -79,6 +79,7 @@ function runtime(alias: string, baseUrl: string): ManagedRuntimeConfig {
     enabled: true,
     healthUrl: `${baseUrl}/models`,
     idleTtlMs: 60_000,
+    loadProgressPath: null,
     loadTimeoutMs: 10_000,
     maxConcurrency: 1,
     recommendedPromptBudget: 3072,

@@ -60,6 +60,7 @@ RUNTIME_EXTRA_ARGS="${RUNTIME_EXTRA_ARGS:-}"
 RUNTIME_WORKDIR="${RUNTIME_WORKDIR:-$(pwd)}"
 RUNTIME_LLAMA_SERVER="${RUNTIME_LLAMA_SERVER:-$(command -v llama-server || true)}"
 RUNTIME_STATE_DIR="${RUNTIME_STATE_DIR:-${HOME}/Library/Application Support/local-model-gateway/runtimes/${RUNTIME_ALIAS}}"
+RUNTIME_PROGRESS_FILE="${RUNTIME_PROGRESS_FILE:-${RUNTIME_STATE_DIR}/load-progress.json}"
 RUNTIME_LOG_DIR="${RUNTIME_LOG_DIR:-${HOME}/Library/Logs/local-model-gateway/${RUNTIME_ALIAS}}"
 RUNTIME_PLIST_DIR="${RUNTIME_PLIST_DIR:-${HOME}/Library/LaunchAgents}"
 
@@ -100,6 +101,16 @@ if [[ -n "\${RUNTIME_EXTRA_ARGS:-}" ]]; then
   read -r -a extra_args <<< "\${RUNTIME_EXTRA_ARGS}"
 fi
 
+progress_file="\${RUNTIME_PROGRESS_FILE:-${RUNTIME_PROGRESS_FILE}}"
+
+write_progress() {
+  if [[ -z "\${progress_file}" ]]; then
+    return
+  fi
+  mkdir -p "\$(dirname "\${progress_file}")"
+  printf '{"progress":%s,"updated_at":"%s"}\n' "\$1" "\$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >"\${progress_file}"
+}
+
 cmd=(
   "\${RUNTIME_LLAMA_SERVER:-${RUNTIME_LLAMA_SERVER}}"
   --alias "\${RUNTIME_UPSTREAM_ALIAS:-${RUNTIME_UPSTREAM_ALIAS}}"
@@ -122,7 +133,14 @@ else
   cmd+=(-hf "\${RUNTIME_HF_REPO}" --hf-file "\${RUNTIME_HF_FILE}")
 fi
 
-exec "\${cmd[@]}" "\${extra_args[@]}"
+"\${cmd[@]}" "\${extra_args[@]}" 2> >(while IFS= read -r line; do
+  if [[ "\${line}" =~ ([0-9]{1,3}([.][0-9]+)?)% ]]; then
+    pct="\${BASH_REMATCH[1]}"
+    normalized="\$(awk -v p="\${pct}" 'BEGIN { if (p > 1) p = p / 100; if (p < 0) p = 0; if (p > 1) p = 1; printf "%.4f", p }')"
+    write_progress "\${normalized}"
+  fi
+  printf '%s\n' "\${line}" >&2
+done)
 EOF
   chmod 0755 "${WRAPPER_PATH}"
 }

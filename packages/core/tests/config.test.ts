@@ -71,6 +71,7 @@ describe('gateway config', () => {
           '    base_url: http://127.0.0.1:18001/v1',
           '    health_url: http://127.0.0.1:18001/v1/models',
           '    service_script: ./runtime/qwen.sh',
+          '    load_progress_path: ./runtime/qwen-progress.json',
           '    context_window: 131072',
         ].join('\n'),
         'utf8',
@@ -81,6 +82,7 @@ describe('gateway config', () => {
       assert.equal(config.dataDir, path.join(root, 'state'));
       assert.deepEqual(config.startupModels, { ep2: path.join(root, 'models/ep2.gguf') });
       assert.equal(config.managedRuntimes[0].serviceScript, path.join(root, 'runtime/qwen.sh'));
+      assert.equal(config.managedRuntimes[0].loadProgressPath, path.join(root, 'runtime/qwen-progress.json'));
       assert.equal(config.managedRuntimes[0].contextWindow, 131072);
     });
   });

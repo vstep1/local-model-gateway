@@ -145,6 +145,7 @@ export interface ManagedRuntimeConfig {
   enabled: boolean;
   healthUrl: string;
   idleTtlMs: number;
+  loadProgressPath: string | null;
   loadTimeoutMs: number;
   maxConcurrency: number;
   serviceScript: string;
@@ -175,6 +176,7 @@ export interface ManagedRuntimeStatus {
   loadElapsedMs: number | null;
   loadPhase: string | null;
   loadProgress: number | null;
+  loadProgressSource: string | null;
   loadStartedAt: string | null;
   loadTimeoutMs: number;
   maxConcurrency: number;
