@@ -195,8 +195,8 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     .last-updated { color: var(--muted); font-size: 0.88rem; }
     .error-lines { margin-top: 10px; color: #fecdd3; font-size: 0.84rem; display: grid; gap: 4px; }
     @keyframes indeterminate {
-      0% { transform: translateX(-110%); }
-      100% { transform: translateX(280%); }
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(270%); }
     }
     @media (max-width: 900px) {
       header { display: block; }
@@ -321,56 +321,6 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       return Math.round(Math.max(0, Math.min(1, value)) * 100) + '%';
     }
 
-    function clamp01(value) {
-      return Math.max(0, Math.min(1, value));
-    }
-
-    function liveMs(value, elapsedMs) {
-      return typeof value === 'number' && Number.isFinite(value) ? value + elapsedMs : value;
-    }
-
-    function liveStatus() {
-      if (!lastStatus) return null;
-      const elapsedMs = Math.max(0, Date.now() - lastStatusAt);
-      const cloned = JSON.parse(JSON.stringify(lastStatus));
-      cloned.uptime_seconds = typeof cloned.uptime_seconds === 'number'
-        ? cloned.uptime_seconds + elapsedMs / 1000
-        : cloned.uptime_seconds;
-      cloned.active_work = Array.isArray(cloned.active_work)
-        ? cloned.active_work.map((item) => {
-          const next = {
-            ...item,
-            activeDurationMs: liveMs(item.activeDurationMs, elapsedMs),
-            ageMs: liveMs(item.ageMs, elapsedMs),
-            upstreamElapsedMs: liveMs(item.upstreamElapsedMs, elapsedMs),
-          };
-          const bytes = (Number(next.requestBytes) || 0) + (Number(next.responseBytes) || 0);
-          const seconds = typeof next.upstreamElapsedMs === 'number' && next.upstreamElapsedMs > 0
-            ? next.upstreamElapsedMs / 1000
-            : 0;
-          if (seconds > 0) next.bandwidthBps = Math.round(bytes / seconds);
-          return next;
-        })
-        : [];
-      cloned.gpu_queue = Array.isArray(cloned.gpu_queue)
-        ? cloned.gpu_queue.map((item) => ({ ...item, ageMs: liveMs(item.ageMs, elapsedMs) }))
-        : [];
-      cloned.managed_runtimes = Array.isArray(cloned.managed_runtimes)
-        ? cloned.managed_runtimes.map((runtime) => {
-          if (runtime.state !== 'loading' || !runtime.loadStartedAt) return runtime;
-          const loadElapsedMs = Math.max(0, Date.now() - Date.parse(runtime.loadStartedAt));
-          return {
-            ...runtime,
-            loadElapsedMs,
-            loadProgress: typeof runtime.loadProgress === 'number'
-              ? clamp01(runtime.loadProgress)
-              : null,
-          };
-        })
-        : [];
-      return cloned;
-    }
-
     function stateClass(state) {
       return 'state-' + text(state, 'unknown').toLowerCase().replace(/[^a-z0-9_]+/g, '-');
     }
@@ -381,7 +331,8 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
         ? Math.round(Math.max(0, Math.min(1, value)) * 100)
         : 0;
       const title = indeterminate ? 'Actual load progress unavailable' : percent + '%';
-      return '<div class="progress ' + (indeterminate ? 'indeterminate' : '') + '" title="' + escapeHtml(title) + '"><div class="progress-bar ' + escapeHtml(cls) + '" style="' + (indeterminate ? '' : 'width: ' + percent + '%') + '"></div></div>';
+      const delay = indeterminate ? -Math.round(Date.now() % 1150) : 0;
+      return '<div class="progress ' + (indeterminate ? 'indeterminate' : '') + '" title="' + escapeHtml(title) + '"><div class="progress-bar ' + escapeHtml(cls) + '" style="' + (indeterminate ? 'animation-delay: ' + delay + 'ms' : 'width: ' + percent + '%') + '"></div></div>';
     }
 
     function metric(label, value, large = false, sub = '') {
@@ -532,6 +483,10 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       renderTelemetry(status);
       renderRuntimes(status.managed_runtimes);
       renderWork(status);
+      updateLastUpdated();
+    }
+
+    function updateLastUpdated() {
       if (lastStatusAt) {
         const age = Math.max(0, Date.now() - lastStatusAt);
         lastUpdated.textContent = 'Updated ' + new Date(lastStatusAt).toLocaleTimeString() + ' · ' + fmtMs(age) + ' ago';
@@ -585,8 +540,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       }, POLL_MS);
       liveTimer = window.setInterval(() => {
         if (paused) return;
-        const status = liveStatus();
-        if (status) renderStatus(status);
+        updateLastUpdated();
       }, LIVE_TICK_MS);
     }
 

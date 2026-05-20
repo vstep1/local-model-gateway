@@ -18,6 +18,7 @@ describe('browser dashboard', () => {
     assert.match(html, /POLL_MS = 1000/);
     assert.match(html, /LIVE_TICK_MS = 250/);
     assert.match(html, /cache: 'no-store'/);
+    assert.match(html, /animation-delay: '\s*\+ delay \+ 'ms/);
     assert.match(html, /sessionStorage/);
     assert.match(html, /managed_runtimes/);
     assert.match(html, /gpu_queue/);
@@ -28,6 +29,8 @@ describe('browser dashboard', () => {
     assert.match(html, /bandwidthBps/);
     assert.match(html, /Actual load progress unavailable/);
     assert.match(html, /no runtime progress signal/);
+    assert.doesNotMatch(html, /if \(status\) renderStatus\(status\)/);
+    assert.doesNotMatch(html, /function liveStatus/);
   });
 
   it('allows dashboard without auth while keeping status protected', async () => {
