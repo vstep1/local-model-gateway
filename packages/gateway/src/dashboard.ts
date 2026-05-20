@@ -510,5 +510,8 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
 }
 
 export function registerDashboardRoute(app: Hono, authRequired: boolean): void {
-  app.get('/dashboard', (c) => c.html(dashboardHtml({ authRequired })));
+  app.get('/dashboard', (c) => {
+    c.header('Cache-Control', 'no-store');
+    return c.html(dashboardHtml({ authRequired }));
+  });
 }

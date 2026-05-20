@@ -47,6 +47,7 @@ describe('browser dashboard', () => {
 
     const dashboard = await app.request('/dashboard');
     assert.equal(dashboard.status, 200);
+    assert.equal(dashboard.headers.get('cache-control'), 'no-store');
     assert.match(await dashboard.text(), /Local Model Gateway Dashboard/);
 
     const unauthorizedStatus = await app.request('/status');

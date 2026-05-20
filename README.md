@@ -84,6 +84,7 @@ multiple local agents and LLM apps at the same time.
 | MCP endpoint | Runtime control and setup tools over Streamable HTTP at `/mcp`. |
 | Durable GPU queue | SQLite-backed priority/FIFO work admission across URL and MCP entrypoints. |
 | Runtime residency | Starts, health-checks, unloads, and swaps managed local runtimes on demand. |
+| Stop command cancellation | Exact user commands like `stop` or `cancel generation` cancel matching in-flight OpenAI work instead of starting another GPU request. |
 | Browser dashboard | Read-only `/dashboard` view for loaded models, load progress, prefill, bandwidth, active work, and queued GPU requests. |
 | Launch adapters | macOS launchd and generic shell helpers now, with systemd/Docker planned. |
 | Lazy MCP broker | Keeps downstream MCP catalogs out of the prompt until a tool is actually searched or described. |

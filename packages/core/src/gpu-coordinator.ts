@@ -379,6 +379,23 @@ export class GpuCoordinator {
     return this.cancelWorkItem(workItemId, reason, 'cancelled');
   }
 
+  cancelOpenAiRequests(options: { model?: string; reason?: string } = {}): GpuWorkItem[] {
+    const model = options.model?.trim().toLowerCase();
+    const reason = options.reason ?? 'OpenAI stop command received';
+    const cancellable = this.store.listGpuWorkItems(1000).filter((item) => (
+      item.source === 'openai' &&
+      (item.state === 'queued' || item.state === 'running') &&
+      (!model || item.model.toLowerCase() === model)
+    ));
+
+    const cancelled: GpuWorkItem[] = [];
+    for (const item of cancellable) {
+      const result = this.cancelWorkItem(item.id, reason, 'cancelled');
+      if (result) cancelled.push(result);
+    }
+    return cancelled;
+  }
+
   cancelPublicJob(publicJobId: string, reason = 'Cancelled by user'): GpuWorkItem | null {
     const workItem = this.store.getGpuWorkItemForPublicJob(publicJobId);
     if (!workItem) return null;

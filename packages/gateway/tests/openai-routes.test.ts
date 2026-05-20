@@ -7,12 +7,19 @@ import { describe, it } from 'node:test';
 import { Hono } from 'hono';
 import { initialConfigEntries } from '@local-model-gateway/core';
 import { GatewayStore } from '@local-model-gateway/core';
+import { GpuCoordinator } from '@local-model-gateway/core';
 import { ModelRegistry } from '@local-model-gateway/core';
 import { OpenAiUpstreamPool } from '@local-model-gateway/core';
 import { registerOpenAiRoutes } from '../src/openai-routes.js';
 import { Scheduler } from '@local-model-gateway/core';
 import { ensureDir, fileSha256 } from '@local-model-gateway/core';
-import { ActiveRuntimeSettings, GatewayConfig, GenerationBackend, GenerationRequest } from '@local-model-gateway/core';
+import {
+  ActiveRuntimeSettings,
+  GatewayConfig,
+  GenerationBackend,
+  GenerationRequest,
+  ManagedRuntimeConfig,
+} from '@local-model-gateway/core';
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -61,6 +68,29 @@ class TestBackend implements GenerationBackend {
       rawTail: '',
     };
   }
+}
+
+function runtime(alias: string, baseUrl: string): ManagedRuntimeConfig {
+  return {
+    alias,
+    baseUrl,
+    contextNotes: null,
+    contextWindow: 4096,
+    enabled: true,
+    healthUrl: `${baseUrl}/models`,
+    idleTtlMs: 60_000,
+    loadTimeoutMs: 10_000,
+    maxConcurrency: 1,
+    recommendedPromptBudget: 3072,
+    serviceScript: '/usr/bin/env',
+    startArgs: ['true'],
+    stopArgs: ['true'],
+    stopSequences: [],
+    stopTimeoutMs: 10_000,
+    supportsReasoning: false,
+    supportsStreaming: true,
+    upstreamModel: alias,
+  };
 }
 
 async function createOpenAiApp(): Promise<{
@@ -530,6 +560,112 @@ describe('openai-compatible routes', () => {
       } else {
         assert.ok(result instanceof Error);
       }
+    } finally {
+      await harness.cleanup();
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('cancels active managed runtime work when a stop command arrives', async () => {
+    let resolveReceived: () => void = () => {};
+    let resolveClosed: () => void = () => {};
+    const received = new Promise<void>((resolve) => {
+      resolveReceived = resolve;
+    });
+    const closed = new Promise<void>((resolve) => {
+      resolveClosed = resolve;
+    });
+
+    const server = http.createServer((req, res) => {
+      if (req.method !== 'POST' || req.url !== '/v1/chat/completions') {
+        res.writeHead(404).end();
+        return;
+      }
+
+      req.resume();
+      req.on('end', () => {
+        resolveReceived();
+      });
+      res.on('close', () => {
+        resolveClosed();
+      });
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+
+    const harness = await createOpenAiApp();
+    try {
+      const coordinator = new GpuCoordinator(
+        [runtime('qwen3-32b', `http://127.0.0.1:${address.port}/v1`)],
+        harness.store,
+        {
+          isHealthy: async () => true,
+          runServiceCommand: async () => undefined,
+        },
+      );
+      const app = new Hono();
+      registerOpenAiRoutes(
+        app,
+        harness.scheduler,
+        harness.store.getRuntimeSettings(),
+        () => ['ep2', 'qwen3-32b'],
+        undefined,
+        coordinator,
+      );
+
+      const running = Promise.resolve(
+        app.request('/v1/chat/completions', {
+          body: JSON.stringify({
+            messages: [{ content: 'hold this open', role: 'user' }],
+            model: 'qwen3-32b',
+            stream: true,
+          }),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        }),
+      ).catch((error: unknown) => error);
+
+      await Promise.race([
+        received,
+        sleep(1000).then(() => {
+          throw new Error('managed upstream did not receive request');
+        }),
+      ]);
+      assert.equal(coordinator.status().active_work.length, 1);
+
+      const stop = await app.request('/v1/chat/completions', {
+        body: JSON.stringify({
+          messages: [{ content: 'stop', role: 'user' }],
+          model: 'qwen3-32b',
+          stream: false,
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+
+      assert.equal(stop.status, 200);
+      const stopBody = await stop.json();
+      assert.equal(stopBody.local_model_gateway.stop_command, true);
+      assert.equal(stopBody.local_model_gateway.cancelled_work_item_ids.length, 1);
+      assert.match(stopBody.choices[0].message.content, /Cancelled 1 in-flight local request/);
+
+      await Promise.race([
+        closed,
+        sleep(1000).then(() => {
+          throw new Error('managed upstream request was not aborted');
+        }),
+      ]);
+
+      const result = await running;
+      if (result instanceof Response) {
+        assert.equal(result.status, 499);
+      } else {
+        assert.ok(result instanceof Error);
+      }
+      await waitFor(() => coordinator.status().active_work.length === 0);
     } finally {
       await harness.cleanup();
       server.closeAllConnections();

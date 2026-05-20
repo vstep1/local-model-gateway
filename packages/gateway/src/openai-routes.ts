@@ -82,6 +82,189 @@ function asPriority(value: number | undefined): 0 | 1 | 2 | undefined {
   return 1;
 }
 
+const STOP_COMMANDS = new Set([
+  'abort',
+  'abort current request',
+  'cancel',
+  'cancel current generation',
+  'cancel current request',
+  'cancel generation',
+  'cancel request',
+  'discard output',
+  'dont need this anymore',
+  'enough',
+  'halt',
+  'i dont need this anymore',
+  'never mind',
+  'nevermind',
+  'no longer needed',
+  'output no longer needed',
+  'stop',
+  'stop current generation',
+  'stop current request',
+  'stop generating',
+  'thats enough',
+]);
+
+function normalizeCommandText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/^[\s/]+/, '')
+    .replace(/[.,!?;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^(?:(?:ok|okay|please|pls)\s+)+/, '')
+    .replace(/\s+(please|pls)$/, '')
+    .replace(/'/g, '')
+    .trim();
+}
+
+function textFromContent(content: unknown): string | null {
+  if (typeof content === 'string') return content;
+
+  if (Array.isArray(content)) {
+    const parts: string[] = [];
+    for (const item of content) {
+      if (typeof item === 'string') {
+        parts.push(item);
+        continue;
+      }
+      if (item && typeof item === 'object') {
+        const record = item as Record<string, unknown>;
+        if ((record.type === 'text' || record.type === 'input_text') && typeof record.text === 'string') {
+          parts.push(record.text);
+        }
+      }
+    }
+    return parts.length > 0 ? parts.join('\n') : null;
+  }
+
+  if (content && typeof content === 'object') {
+    const text = (content as Record<string, unknown>).text;
+    if (typeof text === 'string') return text;
+  }
+
+  return null;
+}
+
+function lastUserText(messages: ChatMessage[]): string | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== 'user') continue;
+    return textFromContent(message.content);
+  }
+  return null;
+}
+
+function isStopCommand(text: string | null): boolean {
+  return Boolean(text && STOP_COMMANDS.has(normalizeCommandText(text)));
+}
+
+function stopCommandText(cancelledCount: number): string {
+  if (cancelledCount === 1) return 'Cancelled 1 in-flight local request.';
+  if (cancelledCount > 1) return `Cancelled ${cancelledCount} in-flight local requests.`;
+  return 'No matching in-flight local request was running or queued.';
+}
+
+function streamFromEvents(events: Array<Record<string, unknown> | '[DONE]'>): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const event of events) {
+        controller.enqueue(
+          encoder.encode(event === '[DONE]' ? 'data: [DONE]\n\n' : `data: ${JSON.stringify(event)}\n\n`),
+        );
+      }
+      controller.close();
+    },
+  });
+  return new Response(body, { status: 200, headers: streamHeaders() });
+}
+
+function stopCommandChatResponse(model: string, cancelledIds: string[], stream: boolean): Response {
+  const content = stopCommandText(cancelledIds.length);
+  const created = Math.floor(Date.now() / 1000);
+  const id = `chatcmpl-stop-${created}`;
+
+  if (stream) {
+    const base = { id, object: 'chat.completion.chunk', created, model };
+    return streamFromEvents([
+      { ...base, choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }] },
+      { ...base, choices: [{ index: 0, delta: { content }, finish_reason: null }] },
+      { ...base, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] },
+      '[DONE]',
+    ]);
+  }
+
+  return Response.json({
+    id,
+    object: 'chat.completion',
+    created,
+    model,
+    choices: [
+      {
+        finish_reason: 'stop',
+        index: 0,
+        message: { content, role: 'assistant' },
+      },
+    ],
+    local_model_gateway: {
+      cancelled_work_item_ids: cancelledIds,
+      stop_command: true,
+    },
+  });
+}
+
+function stopCommandResponsesResponse(model: string, cancelledIds: string[], stream: boolean): Response {
+  const content = stopCommandText(cancelledIds.length);
+  const created = Math.floor(Date.now() / 1000);
+  const id = `resp_stop_${created}`;
+
+  if (stream) {
+    return streamFromEvents([
+      { type: 'response.output_text.delta', response_id: id, delta: content },
+      {
+        type: 'response.completed',
+        response: {
+          id,
+          object: 'response',
+          model,
+          status: 'completed',
+          output: [
+            {
+              type: 'message',
+              role: 'assistant',
+              content: [{ type: 'output_text', text: content }],
+            },
+          ],
+        },
+      },
+      '[DONE]',
+    ]);
+  }
+
+  return Response.json({
+    id,
+    object: 'response',
+    created_at: created,
+    model,
+    output: [
+      {
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: content }],
+      },
+    ],
+    status: 'completed',
+    local_model_gateway: {
+      cancelled_work_item_ids: cancelledIds,
+      stop_command: true,
+    },
+  });
+}
+
 function ensureSuccessOrError(job: JobRecord): Response | null {
   if (job.state === 'succeeded') {
     return null;
@@ -150,6 +333,15 @@ export function registerOpenAiRoutes(
 
     const maxQueueWaitMs = parsed.max_queue_wait_ms ?? settings.maxQueueWaitMs;
     const requestedModel = parsed.model?.trim() || settings.defaultModel;
+    const stopRequested = isStopCommand(lastUserText(parsed.messages as ChatMessage[]));
+
+    if (stopRequested && gpuCoordinator) {
+      const cancelled = gpuCoordinator.cancelOpenAiRequests({
+        model: requestedModel,
+        reason: 'OpenAI chat stop command received',
+      });
+      return stopCommandChatResponse(requestedModel, cancelled.map((item) => item.id), parsed.stream);
+    }
 
     if (gpuCoordinator?.hasModel(requestedModel)) {
       return gpuCoordinator.proxyChatCompletions(
@@ -314,6 +506,20 @@ export function registerOpenAiRoutes(
 
     const maxQueueWaitMs = parsed.max_queue_wait_ms ?? settings.maxQueueWaitMs;
     const requestedModel = parsed.model?.trim() || settings.defaultModel;
+    const messages = parseResponsesInputToMessages(parsed.input);
+    if (parsed.instructions) {
+      messages.unshift({ role: 'system', content: parsed.instructions });
+    }
+    const streamRequested = parsed.stream !== false;
+    const stopRequested = isStopCommand(lastUserText(messages));
+
+    if (stopRequested && gpuCoordinator) {
+      const cancelled = gpuCoordinator.cancelOpenAiRequests({
+        model: requestedModel,
+        reason: 'OpenAI responses stop command received',
+      });
+      return stopCommandResponsesResponse(requestedModel, cancelled.map((item) => item.id), streamRequested);
+    }
 
     if (gpuCoordinator?.hasModel(requestedModel)) {
       return gpuCoordinator.proxyResponses(
@@ -334,11 +540,6 @@ export function registerOpenAiRoutes(
       );
     }
 
-    const messages = parseResponsesInputToMessages(parsed.input);
-    if (parsed.instructions) {
-      messages.unshift({ role: 'system', content: parsed.instructions });
-    }
-
     const prompt = compilePromptFromMessages(messages);
 
     let job: JobRecord;
@@ -357,8 +558,6 @@ export function registerOpenAiRoutes(
       const message = error instanceof Error ? error.message : 'Queue submit failed';
       return makeError(429, message, 'rate_limit_error');
     }
-
-    const streamRequested = parsed.stream !== false;
 
     if (!streamRequested) {
       const terminal = await waitForStartedThenTerminal(scheduler, job.id, maxQueueWaitMs);
