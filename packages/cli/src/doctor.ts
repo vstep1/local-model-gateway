@@ -471,8 +471,11 @@ async function processGuardChecks(
   }
 
   const activeWork = arrayFromStatus(statusBody, 'active_work');
-  const activeExclusive = activeWork.some((item) => (
-    item.kind === 'exclusive' || item.type === 'exclusive'
+  const activeLlamaCliRuntime = activeWork.some((item) => (
+    item.runtimeAdapter === 'llama_cli' ||
+    item.runtimeMode === 'one_shot_command' ||
+    item.kind === 'exclusive' ||
+    item.type === 'exclusive'
   ));
   const managedRuntimePorts = new Set(
     config.managedRuntimes
@@ -486,7 +489,7 @@ async function processGuardChecks(
   for (const process of processes.filter((item) => isLlamaCliProcess(item) || isLlamaServerProcess(item))) {
     const ports = await probes.listeningPorts(process.pid);
     if (isLlamaCliProcess(process)) {
-      if (!activeExclusive) {
+      if (!activeLlamaCliRuntime) {
         bypasses.push(processEvidence(process, ports));
       }
       continue;
@@ -503,7 +506,7 @@ async function processGuardChecks(
   if (bypasses.length > 0) {
     checks.push({
       evidence: { processes: bypasses },
-      fix: `Route local llama.cpp work through http://127.0.0.1:${config.port}/v1 or declare it as a managed runtime/exclusive job before running it.`,
+      fix: `Route local llama.cpp work through http://127.0.0.1:${config.port}/v1 or declare it as a managed runtime or one-shot runtime adapter job before running it.`,
       fixPlan: [
         'Stop or let the direct llama.cpp process finish.',
         `Re-run the workload through http://127.0.0.1:${config.port}/v1 so it appears in /status and /dashboard.`,

@@ -123,7 +123,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     .state-loaded, .state-running, .state-succeeded { background: var(--green); }
     .state-loading { background: var(--blue); }
     .state-prefill, .state-admitted, .state-loading-model { background: var(--blue); }
-    .state-streaming, .state-receiving { background: var(--green); }
+    .state-streaming, .state-receiving, .state-command-running { background: var(--green); }
     .state-queued { background: var(--amber); }
     .state-failed, .state-timed_out, .state-cancelled { background: var(--red); }
     .state-unloading { background: var(--purple); }
@@ -184,9 +184,10 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       background: var(--gray);
     }
     table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-    #active-work, #gpu-queue { overflow-x: auto; padding-bottom: 4px; }
+    #active-work, #gpu-queue, #recent-work { overflow-x: auto; padding-bottom: 4px; }
     #active-work table { min-width: 980px; }
     #gpu-queue table { min-width: 680px; }
+    #recent-work table { min-width: 900px; }
     th, td { padding: 9px 8px; border-bottom: 1px solid rgba(148, 163, 184, 0.18); text-align: left; vertical-align: top; }
     th { color: #d4d8dc; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0; }
     td.id { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -246,6 +247,10 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       <section class="panel">
         <h2>GPU Queue</h2>
         <div id="gpu-queue"></div>
+      </section>
+      <section class="panel">
+        <h2>Recent Work</h2>
+        <div id="recent-work"></div>
       </section>
     </section>
   </main>
@@ -321,6 +326,14 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       return Math.round(Math.max(0, Math.min(1, value)) * 100) + '%';
     }
 
+    function fmtTokenRatio(done, total) {
+      if (typeof done !== 'number' || !Number.isFinite(done)) return '';
+      if (typeof total !== 'number' || !Number.isFinite(total) || total <= 0) {
+        return Math.round(done).toLocaleString() + ' tokens';
+      }
+      return Math.round(done).toLocaleString() + ' / ' + Math.round(total).toLocaleString() + ' tokens';
+    }
+
     function stateClass(state) {
       return 'state-' + text(state, 'unknown').toLowerCase().replace(/[^a-z0-9_]+/g, '-');
     }
@@ -347,17 +360,31 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       return Array.isArray(status.gpu_queue) ? status.gpu_queue.filter((item) => item.state === 'queued') : [];
     }
 
+    function recentItems(status) {
+      return Array.isArray(status.recent_work) ? status.recent_work : [];
+    }
+
     function telemetryTotals(status) {
       const active = activeItems(status);
       const loadingRuntime = Array.isArray(status.managed_runtimes)
         ? status.managed_runtimes.find((runtime) => runtime.state === 'loading')
         : null;
+      const prefill = active.filter((item) => item.phase === 'prefill');
+      const prefillWithProgress = prefill.filter((item) => typeof item.prefillProgress === 'number' && Number.isFinite(item.prefillProgress));
+      const prefillProgress = prefillWithProgress.length
+        ? prefillWithProgress.reduce((sum, item) => sum + item.prefillProgress, 0) / prefillWithProgress.length
+        : null;
+      const prefillInputDone = prefill.reduce((sum, item) => sum + (Number(item.prefillInputDone) || 0), 0);
+      const prefillInputTotal = prefill.reduce((sum, item) => sum + (Number(item.prefillInputTotal) || 0), 0);
       return {
         bandwidthBps: active.reduce((sum, item) => sum + (Number(item.bandwidthBps) || 0), 0),
         loadingRuntime,
+        prefillInputDone: prefillInputDone || null,
+        prefillInputTotal: prefillInputTotal || null,
+        prefillProgress,
         requestBytes: active.reduce((sum, item) => sum + (Number(item.requestBytes) || 0), 0),
         responseBytes: active.reduce((sum, item) => sum + (Number(item.responseBytes) || 0), 0),
-        waitingForFirstByte: active.filter((item) => item.phase === 'prefill').length,
+        waitingForFirstByte: prefill.length,
       };
     }
 
@@ -383,13 +410,19 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     function renderTelemetry(status) {
       const totals = telemetryTotals(status);
       const loading = totals.loadingRuntime;
+      const prefillActual = typeof totals.prefillProgress === 'number';
+      const prefillSub = prefillActual
+        ? fmtPercent(totals.prefillProgress) + ' actual' + (fmtTokenRatio(totals.prefillInputDone, totals.prefillInputTotal) ? ' · ' + fmtTokenRatio(totals.prefillInputDone, totals.prefillInputTotal) : '')
+        : totals.waitingForFirstByte
+          ? 'waiting for runtime progress signal'
+          : 'No active prefill.';
       document.getElementById('telemetry-strip').innerHTML = [
         '<article class="telemetry-card"><div class="label">Model load</div><strong>' + escapeHtml(loading ? loading.alias : 'No active load') + '</strong>'
           + progressBar(loading ? loading.loadProgress : 0, loading ? 'loading' : '')
           + '<p>' + escapeHtml(loading ? ((loading.loadPhase || 'loading') + ' · ' + fmtMs(loading.loadElapsedMs) + (loading.loadProgressSource === 'progress_file' ? ' · actual progress' : ' · no runtime progress signal')) : 'Loaded runtimes stay visible below.') + '</p></article>',
-        '<article class="telemetry-card"><div class="label">Inference prefill</div><strong>' + escapeHtml(totals.waitingForFirstByte + ' waiting for first byte') + '</strong>'
-          + progressBar(activeItems(status).length ? Math.max(0.05, totals.waitingForFirstByte / activeItems(status).length) : 0, 'queued')
-          + '<p>Requests in prefill have reached the runtime but have not streamed output yet.</p></article>',
+        '<article class="telemetry-card"><div class="label">Inference prefill</div><strong>' + escapeHtml(prefillActual ? fmtPercent(totals.prefillProgress) + ' prefill' : totals.waitingForFirstByte + ' waiting for first byte') + '</strong>'
+          + progressBar(prefillActual ? totals.prefillProgress : totals.waitingForFirstByte ? null : 0, totals.waitingForFirstByte && !prefillActual ? 'loading' : 'queued')
+          + '<p>' + escapeHtml(prefillSub) + '</p></article>',
         '<article class="telemetry-card"><div class="label">Transfer</div><strong>' + escapeHtml(fmtBps(totals.bandwidthBps)) + '</strong>'
           + '<p>TX ' + escapeHtml(fmtBytes(totals.requestBytes)) + ' · RX ' + escapeHtml(fmtBytes(totals.responseBytes)) + '</p></article>',
       ].join('');
@@ -416,6 +449,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
           + '<span>queued</span><span>' + escapeHtml(runtime.queuedRequests) + '</span>'
           + '<span>load phase</span><span>' + escapeHtml(runtime.loadPhase) + '</span>'
           + '<span>progress</span><span>' + escapeHtml(runtime.loadProgressSource === 'progress_file' ? fmtPercent(runtime.loadProgress) + ' actual' : runtime.state === 'loading' ? 'not exposed' : fmtPercent(runtime.loadProgress)) + '</span>'
+          + '<span>prefill</span><span>' + escapeHtml(typeof runtime.prefillProgress === 'number' ? fmtPercent(runtime.prefillProgress) + ' · ' + fmtTokenRatio(runtime.prefillInputDone, runtime.prefillInputTotal) : '-') + '</span>'
           + '<span>load elapsed</span><span>' + escapeHtml(fmtMs(runtime.loadElapsedMs)) + '</span>'
           + '<span>last used</span><span>' + escapeHtml(runtime.lastUsedAt) + '</span>'
           + '<span>upstream</span><span class="mono">' + escapeHtml(runtime.upstreamModel) + '</span>'
@@ -434,15 +468,12 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       root.innerHTML = '<table><thead><tr>' + columns.map((column) => '<th>' + escapeHtml(column.label) + '</th>').join('') + '</tr></thead><tbody>'
         + rows.map((row) => '<tr>' + columns.map((column) => {
           const value = column.format ? column.format(row[column.key], row) : row[column.key];
-          const cls = column.key === 'id' ? ' class="id"' : ['model', 'upstreamName', 'publicJobId'].includes(column.key) ? ' class="compact"' : '';
-          const title = column.key === 'id' ? ' title="' + escapeHtml(value) + '"' : '';
+          const compact = ['model', 'runtimeAlias', 'runtimeAdapter', 'runtimeMode', 'upstreamName', 'publicJobId', 'errorText'].includes(column.key);
+          const cls = column.key === 'id' ? ' class="id"' : compact ? ' class="compact"' : '';
+          const title = column.key === 'id' || compact ? ' title="' + escapeHtml(value) + '"' : '';
           return '<td' + cls + title + '>' + escapeHtml(value) + '</td>';
         }).join('') + '</tr>').join('')
         + '</tbody></table>';
-    }
-
-    function workType(value, row) {
-      return row.type ?? row.kind ?? value;
     }
 
     function phaseValue(value) {
@@ -453,29 +484,44 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       renderTable('active-work', status.active_work, [
         { key: 'id', label: 'id' },
         { key: 'source', label: 'source' },
-        { key: 'model', label: 'model' },
+        { key: 'runtimeAlias', label: 'runtime' },
+        { key: 'runtimeAdapter', label: 'adapter', format: phaseValue },
+        { key: 'runtimeMode', label: 'mode', format: phaseValue },
         { key: 'phase', label: 'phase', format: phaseValue },
         { key: 'priority', label: 'priority' },
         { key: 'ageMs', label: 'age', format: fmtMs },
         { key: 'activeDurationMs', label: 'active', format: fmtMs },
+        { key: 'prefillProgress', label: 'prefill', format: fmtPercent },
         { key: 'timeToFirstByteMs', label: 'first byte', format: fmtMs },
         { key: 'requestBytes', label: 'tx', format: fmtBytes },
         { key: 'responseBytes', label: 'rx', format: fmtBytes },
         { key: 'bandwidthBps', label: 'rate', format: fmtBps },
         { key: 'upstreamName', label: 'upstream' },
         { key: 'publicJobId', label: 'job' },
-        { key: 'type', label: 'type', format: workType },
       ], 'No active GPU work.');
       renderTable('gpu-queue', queuedItems(status), [
         { key: 'id', label: 'id' },
         { key: 'source', label: 'source' },
-        { key: 'model', label: 'model' },
+        { key: 'runtimeAlias', label: 'runtime' },
+        { key: 'runtimeAdapter', label: 'adapter', format: phaseValue },
+        { key: 'runtimeMode', label: 'mode', format: phaseValue },
         { key: 'phase', label: 'phase', format: phaseValue },
         { key: 'priority', label: 'priority' },
         { key: 'ageMs', label: 'age', format: fmtMs },
         { key: 'publicJobId', label: 'job' },
-        { key: 'type', label: 'type', format: workType },
       ], 'No queued GPU work.');
+      renderTable('recent-work', recentItems(status), [
+        { key: 'id', label: 'id' },
+        { key: 'source', label: 'source' },
+        { key: 'runtimeAlias', label: 'runtime' },
+        { key: 'runtimeAdapter', label: 'adapter', format: phaseValue },
+        { key: 'runtimeMode', label: 'mode', format: phaseValue },
+        { key: 'state', label: 'state', format: phaseValue },
+        { key: 'activeDurationMs', label: 'duration', format: fmtMs },
+        { key: 'ageMs', label: 'age', format: fmtMs },
+        { key: 'publicJobId', label: 'job' },
+        { key: 'errorText', label: 'error' },
+      ], 'No completed GPU work yet.');
     }
 
     function renderStatus(status) {
@@ -488,8 +534,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
 
     function updateLastUpdated() {
       if (lastStatusAt) {
-        const age = Math.max(0, Date.now() - lastStatusAt);
-        lastUpdated.textContent = 'Updated ' + new Date(lastStatusAt).toLocaleTimeString() + ' · ' + fmtMs(age) + ' ago';
+        lastUpdated.textContent = 'Updated ' + new Date(lastStatusAt).toLocaleTimeString();
       }
     }
 

@@ -278,7 +278,7 @@ export class Scheduler extends EventEmitter {
       });
 
       const result = this.gpuCoordinator
-        ? await this.gpuCoordinator.runExclusive(
+        ? await this.gpuCoordinator.runOneShotCommand(
             {
               model: job.model,
               priority: job.effectivePriority,

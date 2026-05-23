@@ -273,6 +273,23 @@ describe('gpu coordinator', () => {
     }
   });
 
+  it('refreshes status state for an already-running healthy runtime', async () => {
+    const store = createStore();
+    const { commands, hooks } = createHooks(['qwen3-32b']);
+    const coordinator = new GpuCoordinator([runtime('qwen3-32b', 'http://127.0.0.1:1/v1')], store, hooks);
+
+    try {
+      assert.equal(coordinator.status().managed_runtimes[0].state, 'unloaded');
+      await coordinator.refreshRuntimeHealth();
+      const status = coordinator.status().managed_runtimes[0];
+      assert.equal(status.state, 'loaded');
+      assert.equal(status.loadPhase, 'ready');
+      assert.deepEqual(commands, []);
+    } finally {
+      store.close();
+    }
+  });
+
   it('reports model load progress while a runtime is starting', async () => {
     const qwen = await startFakeOpenAiServer('qwen');
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-load-progress-'));
@@ -322,6 +339,93 @@ describe('gpu coordinator', () => {
       store.close();
       await fs.rm(root, { force: true, recursive: true });
       await qwen.close();
+    }
+  });
+
+  it('reports active prefill progress from runtime telemetry', async () => {
+    const qwen = await startFakeOpenAiServer('qwen');
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-prefill-progress-'));
+    const progressPath = path.join(root, 'qwen-progress.json');
+    const store = createStore();
+    const { hooks } = createHooks(['qwen3-32b']);
+    const coordinator = new GpuCoordinator(
+      [{ ...runtime('qwen3-32b', qwen.baseUrl), loadProgressPath: progressPath }],
+      store,
+      hooks,
+    );
+
+    try {
+      const request = coordinator.proxyChatCompletions(
+        { messages: [{ content: 'prefill telemetry', role: 'user' }], model: 'qwen3-32b' },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+      await qwen.waitForRequests(1);
+      await fs.writeFile(
+        progressPath,
+        JSON.stringify({
+          load_phase: 'ready',
+          load_progress: 1,
+          prefill_progress: 0.5,
+          prefill_task_id: 87,
+          prefill_tokens_done: 4096,
+          prefill_tokens_total: 8192,
+          updated_at: new Date().toISOString(),
+        }),
+        'utf8',
+      );
+
+      const active = coordinator.status().active_work[0];
+      assert.ok(active);
+      assert.equal(active.phase, 'prefill');
+      assert.equal(active.prefillProgress, 0.5);
+      assert.equal(active.prefillTaskId, 87);
+      assert.equal(active.prefillInputDone, 4096);
+      assert.equal(active.prefillInputTotal, 8192);
+
+      const runtimeStatus = coordinator.status().managed_runtimes[0];
+      assert.equal(runtimeStatus.prefillProgress, 0.5);
+      assert.equal(runtimeStatus.prefillInputDone, 4096);
+
+      qwen.releaseNext('done');
+      assert.equal(await (await request).json().then((body: any) => body.choices[0].message.content), 'done');
+    } finally {
+      store.close();
+      await fs.rm(root, { force: true, recursive: true });
+      await qwen.close();
+    }
+  });
+
+  it('does not coerce null runtime telemetry values to zero progress', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-null-progress-'));
+    const progressPath = path.join(root, 'qwen-progress.json');
+    const store = createStore();
+    const { hooks } = createHooks();
+    const coordinator = new GpuCoordinator(
+      [{ ...runtime('qwen3-32b', 'http://127.0.0.1:1/v1'), loadProgressPath: progressPath }],
+      store,
+      hooks,
+    );
+
+    try {
+      await fs.writeFile(
+        progressPath,
+        JSON.stringify({
+          load_phase: 'starting',
+          load_progress: null,
+          prefill_progress: null,
+          updated_at: new Date().toISOString(),
+        }),
+        'utf8',
+      );
+      const status = coordinator.status().managed_runtimes[0];
+      assert.equal(status.loadProgress, null);
+      assert.equal(status.prefillProgress, null);
+    } finally {
+      store.close();
+      await fs.rm(root, { force: true, recursive: true });
     }
   });
 
@@ -794,6 +898,53 @@ describe('gpu coordinator', () => {
     } finally {
       await harness.cleanup();
       await qwen.close();
+    }
+  });
+
+  it('reports one-shot command runtime adapter work without exposing exclusive kind publicly', async () => {
+    const store = createStore();
+    const { hooks } = createHooks();
+    const coordinator = new GpuCoordinator([], store, hooks);
+    let release!: () => void;
+    const blocker = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    try {
+      const running = coordinator.runOneShotCommand(
+        {
+          model: 'ep2',
+          priority: 1,
+          source: 'mcp',
+        },
+        async () => {
+          await blocker;
+          return 'done';
+        },
+      );
+
+      await waitFor(() => coordinator.status().active_work.length === 1);
+      const active = coordinator.status().active_work[0];
+      assert.equal(active.runtimeAlias, 'ep2');
+      assert.equal(active.runtimeAdapter, 'llama_cli');
+      assert.equal(active.runtimeMode, 'one_shot_command');
+      assert.equal(active.phase, 'command_running');
+      assert.equal('kind' in active, false);
+      assert.equal('type' in active, false);
+
+      release();
+      assert.equal(await running, 'done');
+      assert.equal(coordinator.status().active_work.length, 0);
+      const recent = coordinator.status().recent_work[0];
+      assert.equal(recent.runtimeAlias, 'ep2');
+      assert.equal(recent.runtimeAdapter, 'llama_cli');
+      assert.equal(recent.runtimeMode, 'one_shot_command');
+      assert.equal(recent.phase, 'command_running');
+      assert.equal(recent.state, 'succeeded');
+      assert.equal('kind' in recent, false);
+      assert.equal('type' in recent, false);
+    } finally {
+      store.close();
     }
   });
 

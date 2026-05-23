@@ -62,7 +62,7 @@ Local Model Gateway is:
 - a shared scheduler for GPU-bound local model work
 - a runtime residency manager for loading, unloading, and swapping local models
 - a browser dashboard for seeing loaded models, active work, queued requests,
-  prefill, and transfer telemetry
+  recent completed work, prefill, and transfer telemetry
 - an MCP runtime surface for agents that need status, model discovery, setup
   snippets, and cancellation tools
 
@@ -85,7 +85,7 @@ multiple local agents and LLM apps at the same time.
 | Durable GPU queue | SQLite-backed priority/FIFO work admission across URL and MCP entrypoints. |
 | Runtime residency | Starts, health-checks, unloads, and swaps managed local runtimes on demand. |
 | Stop command cancellation | Exact user commands like `stop` or `cancel generation` cancel matching in-flight OpenAI work instead of starting another GPU request. |
-| Browser dashboard | Read-only `/dashboard` view for loaded models, load progress, prefill, bandwidth, active work, and queued GPU requests. |
+| Browser dashboard | Read-only `/dashboard` view for loaded models, load progress, prefill, bandwidth, active work, queued requests, and recent completed work. |
 | Launch adapters | macOS launchd and generic shell helpers now, with systemd/Docker planned. |
 | Lazy MCP broker | Keeps downstream MCP catalogs out of the prompt until a tool is actually searched or described. |
 | Discovery manifest | `/.well-known/local-model-gateway.json` for clients that want model, timeout, and endpoint hints. |
@@ -100,14 +100,14 @@ flowchart LR
   Q --> C["GpuCoordinator"]
   C --> R1["Managed runtime: qwen3-32b"]
   C --> R2["Managed runtime: minimax-m2.7"]
-  C --> R3["Exclusive LoRA or llama-cli job"]
+  C --> R3["Runtime adapter: llama-cli one-shot"]
   G --> B["Lazy MCP broker"]
   B --> D["Downstream MCP servers"]
 ```
 
 The important design constraint: no managed local GPU request should bypass the
-coordinator. OpenAI URL requests, MCP `submit_job` requests, and exclusive
-`llama-cli` work all queue through the same admission policy.
+coordinator. OpenAI URL requests, MCP `submit_job` requests, and one-shot
+`llama-cli` runtime adapter work all queue through the same admission policy.
 
 ## Quick Start
 
@@ -235,7 +235,7 @@ Queue rules:
 - active work is never interrupted unless explicitly cancelled
 - same-model work can share a loaded runtime up to `maxConcurrency`
 - different-model work waits until the active model drains, then swaps
-- exclusive LoRA work unloads managed runtimes before execution
+- one-shot LoRA runtime adapter work unloads resident service runtimes before execution
 
 Built-in presets:
 

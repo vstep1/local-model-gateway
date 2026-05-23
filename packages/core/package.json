@@ -1,6 +1,6 @@
 {
   "name": "@local-model-gateway/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Core queue, runtime coordination, and config primitives for local AI workstation management.",
   "license": "MIT",
   "type": "module",

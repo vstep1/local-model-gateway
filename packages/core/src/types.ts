@@ -1,6 +1,9 @@
 export type JobSource = 'openai' | 'mcp';
 
+// Internal SQLite scheduler discriminator. Public status uses runtime adapter/mode fields.
 export type GpuWorkKind = 'runtime' | 'exclusive';
+export type RuntimeAdapterKind = 'openai_service' | 'llama_cli';
+export type RuntimeMode = 'resident_service' | 'one_shot_command';
 
 export type JobState =
   | 'queued'
@@ -161,6 +164,16 @@ export interface ManagedRuntimeConfig {
 
 export type ManagedRuntimeState = 'unloaded' | 'loading' | 'loaded' | 'unloading' | 'failed';
 
+export interface RuntimeProgressTelemetry {
+  loadPhase: string | null;
+  loadProgress: number | null;
+  prefillProgress: number | null;
+  prefillTaskId: number | null;
+  prefillTokensDone: number | null;
+  prefillTokensTotal: number | null;
+  telemetryUpdatedAt: string | null;
+}
+
 export interface ManagedRuntimeStatus {
   activeRequests: number;
   activeWorkItemIds: string[];
@@ -180,27 +193,42 @@ export interface ManagedRuntimeStatus {
   loadStartedAt: string | null;
   loadTimeoutMs: number;
   maxConcurrency: number;
+  prefillInputDone: number | null;
+  prefillInputTotal: number | null;
+  prefillProgress: number | null;
+  prefillTaskId: number | null;
   queuedRequests: number;
   state: ManagedRuntimeState;
+  telemetryUpdatedAt: string | null;
   upstreamModel: string;
 }
 
 export interface GpuQueueStatusItem {
+  activeDurationMs?: number | null;
   ageMs: number;
   bandwidthBps?: number;
   createdAt: string;
   deadlineAt: string | null;
+  errorText?: string | null;
+  finishedAt?: string | null;
   id: string;
   model: string;
   phase?: string;
   priority: PriorityTier;
   publicJobId: string | null;
+  prefillInputDone?: number | null;
+  prefillInputTotal?: number | null;
+  prefillProgress?: number | null;
+  prefillTaskId?: number | null;
   requestBytes?: number;
   responseBytes?: number;
+  runtimeAdapter: RuntimeAdapterKind;
+  runtimeAlias: string;
+  runtimeMode: RuntimeMode;
   source: JobSource;
+  startedAt?: string | null;
   state: GpuWorkState;
   timeToFirstByteMs?: number | null;
-  type: GpuWorkKind;
   upstreamElapsedMs?: number | null;
   upstreamName?: string | null;
 }

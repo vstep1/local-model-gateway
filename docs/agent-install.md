@@ -86,8 +86,9 @@ not show active work.
 Cause: model work is running outside the coordinator.
 
 Correct action: route the workload through the gateway. For a long-running
-server, add it as a managed runtime. For one-shot LoRA work, route it through the
-exclusive job path.
+server, add it as a resident service runtime. For one-shot LoRA work, route it
+through a `llama_cli` runtime adapter so it appears in `/status` and the
+dashboard.
 
 ### Runtime Health Is Down
 

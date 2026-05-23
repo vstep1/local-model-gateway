@@ -1,6 +1,6 @@
 {
   "name": "@local-model-gateway/gateway",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "OpenAI-compatible HTTP and MCP gateway for local AI workstation management.",
   "license": "MIT",
   "type": "module",
@@ -18,7 +18,7 @@
     "typecheck": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@local-model-gateway/core": "0.2.0",
+    "@local-model-gateway/core": "0.3.0",
     "fastmcp": "^3.24.0",
     "hono": "^4.8.12",
     "zod": "^3.24.2"

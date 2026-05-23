@@ -1,6 +1,6 @@
 {
   "name": "@local-model-gateway/runtime-adapters",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Runtime service adapter helpers for Local Model Gateway.",
   "license": "MIT",
   "type": "module",

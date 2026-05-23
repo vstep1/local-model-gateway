@@ -79,6 +79,7 @@ export function registerTools(
         ...(gpuCoordinator?.status() ?? {
           gpu_queue: [],
           managed_runtimes: [],
+          recent_work: [],
         }),
       });
     },
@@ -275,10 +276,12 @@ export function registerTools(
     description: 'Show local GPU managed runtime residency, active requests, queue, and last errors.',
     parameters: z.object({}),
     execute: async () => {
+      await gpuCoordinator?.refreshRuntimeHealth();
       return textResult(
         gpuCoordinator?.status() ?? {
           gpu_queue: [],
           managed_runtimes: [],
+          recent_work: [],
         },
       );
     },

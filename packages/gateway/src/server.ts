@@ -106,7 +106,7 @@ export function discoveryManifest(
 
   return redactForStatus({
     name: 'local-model-gateway',
-    version: '0.2.0',
+    version: '0.3.0',
     openai_base_url: urls.openai,
     mcp_url: urls.mcp,
     status_url: urls.status,
@@ -195,7 +195,7 @@ export async function startGateway(): Promise<void> {
     instructions:
       'Local Model Gateway MCP server with shared local GPU runtime scheduling and OpenAI-compatible endpoints.',
     name: 'local-model-gateway',
-    version: '0.2.0',
+    version: '0.3.0',
   });
 
   registerTools(server, scheduler, store, registry, config, gpuCoordinator);
@@ -231,6 +231,7 @@ export async function startGateway(): Promise<void> {
   ));
 
   app.get('/status', async (c) => {
+    await gpuCoordinator.refreshRuntimeHealth();
     c.header('Cache-Control', 'no-store');
     return c.json(redactForStatus({
       config: {

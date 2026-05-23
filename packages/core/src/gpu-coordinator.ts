@@ -14,6 +14,9 @@ import {
   ManagedRuntimeStatus,
   OpenAiUpstreamConfig,
   PriorityTier,
+  RuntimeAdapterKind,
+  RuntimeMode,
+  RuntimeProgressTelemetry,
 } from './types.js';
 import { makeProxyError, proxyOpenAiJson, type ProxyTelemetryCallbacks } from './openai-upstreams.js';
 
@@ -43,11 +46,29 @@ function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
 
+function runtimeDescriptor(kind: GpuWorkKind): {
+  runtimeAdapter: RuntimeAdapterKind;
+  runtimeMode: RuntimeMode;
+} {
+  if (kind === 'runtime') {
+    return {
+      runtimeAdapter: 'openai_service',
+      runtimeMode: 'resident_service',
+    };
+  }
+
+  return {
+    runtimeAdapter: 'llama_cli',
+    runtimeMode: 'one_shot_command',
+  };
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
 function normalizeProgress(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return null;
   return clamp(numeric > 1 ? numeric / 100 : numeric, 0, 1);
@@ -56,11 +77,71 @@ function normalizeProgress(value: unknown): number | null {
 function findProgressInObject(value: unknown): number | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
-  for (const key of ['progress', 'load_progress', 'loadProgress', 'percent', 'percentage']) {
+  for (const key of ['load_progress', 'loadProgress', 'progress', 'percent', 'percentage']) {
     const progress = normalizeProgress(record[key]);
     if (progress !== null) return progress;
   }
   return null;
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function optionalInteger(value: unknown): number | null {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.trunc(numeric);
+}
+
+function findPrefillProgressInObject(value: unknown): number | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  for (const key of ['prefill_progress', 'prefillProgress', 'prompt_progress', 'promptProgress']) {
+    const progress = normalizeProgress(record[key]);
+    if (progress !== null) return progress;
+  }
+  return null;
+}
+
+function emptyRuntimeTelemetry(): RuntimeProgressTelemetry {
+  return {
+    loadPhase: null,
+    loadProgress: null,
+    prefillProgress: null,
+    prefillTaskId: null,
+    prefillTokensDone: null,
+    prefillTokensTotal: null,
+    telemetryUpdatedAt: null,
+  };
+}
+
+function parseRuntimeTelemetryText(value: string): RuntimeProgressTelemetry {
+  const trimmed = value.trim();
+  if (!trimmed) return emptyRuntimeTelemetry();
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as Record<string, unknown>;
+      return {
+        loadPhase: optionalString(record.load_phase ?? record.loadPhase ?? record.phase),
+        loadProgress: findProgressInObject(record),
+        prefillProgress: findPrefillProgressInObject(record),
+        prefillTaskId: optionalInteger(record.prefill_task_id ?? record.prefillTaskId ?? record.task_id ?? record.taskId),
+        prefillTokensDone: optionalInteger(record.prefill_tokens_done ?? record.prefillTokensDone ?? record.tokens_done ?? record.tokensDone),
+        prefillTokensTotal: optionalInteger(record.prefill_tokens_total ?? record.prefillTokensTotal ?? record.tokens_total ?? record.tokensTotal),
+        telemetryUpdatedAt: optionalString(record.updated_at ?? record.updatedAt),
+      };
+    }
+  } catch {
+    // Plain-text progress files are also supported below.
+  }
+
+  return {
+    ...emptyRuntimeTelemetry(),
+    loadProgress: parseProgressText(trimmed),
+  };
 }
 
 function parseProgressText(value: string): number | null {
@@ -174,7 +255,8 @@ export class GpuCoordinator {
   private readonly runtimes = new Map<string, RuntimeState>();
   private readonly pending = new Map<string, PendingWork>();
   private readonly workTelemetry = new Map<string, WorkTelemetry>();
-  private activeExclusiveWorkItemId: string | null = null;
+  private readonly completedWorkTelemetry = new Map<string, WorkTelemetry>();
+  private activeOneShotWorkItemId: string | null = null;
   private admitting = false;
 
   constructor(
@@ -240,31 +322,46 @@ export class GpuCoordinator {
       .sort((a, b) => a.alias.localeCompare(b.alias));
   }
 
+  async refreshRuntimeHealth(): Promise<void> {
+    const checks = await Promise.all(Array.from(this.runtimes.values()).map(async (runtime) => ({
+      healthy: await this.isHealthy(runtime.config),
+      runtime,
+    })));
+
+    for (const { healthy, runtime } of checks) {
+      if (runtime.state === 'loading' || runtime.state === 'unloading' || runtime.activeRequests > 0) {
+        continue;
+      }
+
+      if (healthy) {
+        runtime.state = 'loaded';
+        runtime.lastError = null;
+        runtime.lastLoadError = null;
+        runtime.loadPhase = 'ready';
+        runtime.loadStartedAt = null;
+      } else if (runtime.state === 'loaded') {
+        runtime.state = 'unloaded';
+        runtime.loadPhase = null;
+        runtime.loadStartedAt = null;
+      }
+    }
+  }
+
   status(): {
-    active_work: Array<Record<string, unknown>>;
+    active_work: GpuQueueStatusItem[];
     gpu_queue: GpuQueueStatusItem[];
     loaded_model: string | null;
     loading_model: string | null;
     managed_runtimes: ManagedRuntimeStatus[];
+    recent_work: GpuQueueStatusItem[];
   } {
     const queued = this.store.listGpuWorkItems(500).filter((item) => (
       item.state === 'queued' || item.state === 'running'
     ));
+    const runtimeTelemetry = this.runtimeTelemetryMap();
 
     const queue = queued
-      .map((item) => ({
-        ageMs: ageMs(item.createdAt) ?? 0,
-        createdAt: item.createdAt,
-        deadlineAt: item.deadlineAt,
-        id: item.id,
-        model: item.model,
-        priority: item.priority,
-        publicJobId: item.publicJobId,
-        source: item.source,
-        state: item.state,
-        type: item.kind,
-        ...this.telemetryStatus(item.id),
-      }))
+      .map((item) => this.workStatusItem(item, runtimeTelemetry))
       .sort((a, b) => b.priority - a.priority || a.createdAt.localeCompare(b.createdAt));
 
     const runtimes = Array.from(this.runtimes.values())
@@ -280,31 +377,30 @@ export class GpuCoordinator {
         lastLoadError: runtime.lastLoadError,
         lastUpstreamError: runtime.lastUpstreamError,
         lastUsedAt: runtime.lastUsedAt,
-        ...this.runtimeLoadStatus(runtime),
+        ...this.runtimeLoadStatus(runtime, runtimeTelemetry.get(runtime.config.alias.toLowerCase())),
         loadTimeoutMs: runtime.config.loadTimeoutMs,
         maxConcurrency: runtime.config.maxConcurrency,
+        prefillInputDone: runtimeTelemetry.get(runtime.config.alias.toLowerCase())?.prefillTokensDone ?? null,
+        prefillInputTotal: runtimeTelemetry.get(runtime.config.alias.toLowerCase())?.prefillTokensTotal ?? null,
+        prefillProgress: runtimeTelemetry.get(runtime.config.alias.toLowerCase())?.prefillProgress ?? null,
+        prefillTaskId: runtimeTelemetry.get(runtime.config.alias.toLowerCase())?.prefillTaskId ?? null,
         queuedRequests: this.store
           .listQueuedGpuWorkItems()
           .filter((item) => item.model.toLowerCase() === runtime.config.alias.toLowerCase())
           .length,
         state: runtime.state,
+        telemetryUpdatedAt: runtimeTelemetry.get(runtime.config.alias.toLowerCase())?.telemetryUpdatedAt ?? null,
         upstreamModel: runtime.config.upstreamModel,
       }))
       .sort((a, b) => a.alias.localeCompare(b.alias));
 
-    const activeWork = this.store.listRunningGpuWorkItems().map((item) => ({
-      activeDurationMs: ageMs(item.startedAt),
-      ageMs: ageMs(item.createdAt) ?? 0,
-      id: item.id,
-      kind: item.kind,
-      model: item.model,
-      priority: item.priority,
-      publicJobId: item.publicJobId,
-      source: item.source,
-      state: item.state,
-      type: item.kind,
-      ...this.telemetryStatus(item.id),
-    }));
+    const activeWork = this.store
+      .listRunningGpuWorkItems()
+      .map((item) => this.workStatusItem(item, runtimeTelemetry));
+    const recentWork = this.store
+      .listGpuWorkItems(20)
+      .filter((item) => item.state !== 'queued' && item.state !== 'running')
+      .map((item) => this.workStatusItem(item, runtimeTelemetry));
 
     return {
       active_work: activeWork,
@@ -312,6 +408,7 @@ export class GpuCoordinator {
       loaded_model: this.loadedRuntimeModel(),
       loading_model: this.loadingRuntimeModel(),
       managed_runtimes: runtimes,
+      recent_work: recentWork,
     };
   }
 
@@ -394,7 +491,7 @@ export class GpuCoordinator {
     }
   }
 
-  async runExclusive<T>(
+  async runOneShotCommand<T>(
     options: AcquireOptions,
     handler: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> {
@@ -579,7 +676,7 @@ export class GpuCoordinator {
   }
 
   private pump(): void {
-    if (this.admitting || this.activeExclusiveWorkItemId) return;
+    if (this.admitting || this.activeOneShotWorkItemId) return;
     const item = this.takeNextAdmissibleQueued();
     if (!item) return;
 
@@ -651,13 +748,13 @@ export class GpuCoordinator {
         return;
       }
 
-      this.activeExclusiveWorkItemId = item.id;
-      this.updateTelemetry(item.id, { phase: 'exclusive_running' });
+      this.activeOneShotWorkItemId = item.id;
+      this.updateTelemetry(item.id, { phase: 'command_running' });
       pending.resolve({
         model: item.model,
         release: this.once((state = 'succeeded', errorText?: string) => {
-          if (this.activeExclusiveWorkItemId === item.id) {
-            this.activeExclusiveWorkItemId = null;
+          if (this.activeOneShotWorkItemId === item.id) {
+            this.activeOneShotWorkItemId = null;
           }
           this.store.finishGpuWorkItem(item.id, state, errorText);
           this.cleanupPending(item.id);
@@ -929,7 +1026,7 @@ export class GpuCoordinator {
     }
   }
 
-  private runtimeLoadStatus(runtime: RuntimeState): {
+  private runtimeLoadStatus(runtime: RuntimeState, telemetry?: RuntimeProgressTelemetry): {
     loadElapsedMs: number | null;
     loadPhase: string | null;
     loadProgress: number | null;
@@ -939,7 +1036,7 @@ export class GpuCoordinator {
     if (runtime.state === 'loaded') {
       return {
         loadElapsedMs: null,
-        loadPhase: runtime.loadPhase ?? 'ready',
+        loadPhase: telemetry?.loadPhase ?? runtime.loadPhase ?? 'ready',
         loadProgress: 1,
         loadProgressSource: 'health',
         loadStartedAt: null,
@@ -949,7 +1046,7 @@ export class GpuCoordinator {
     if (runtime.state !== 'loading' || !runtime.loadStartedAt) {
       return {
         loadElapsedMs: null,
-        loadPhase: runtime.loadPhase,
+        loadPhase: telemetry?.loadPhase ?? runtime.loadPhase,
         loadProgress: null,
         loadProgressSource: null,
         loadStartedAt: runtime.loadStartedAt,
@@ -957,22 +1054,63 @@ export class GpuCoordinator {
     }
 
     const elapsed = ageMs(runtime.loadStartedAt) ?? 0;
-    const fileProgress = this.readRuntimeLoadProgress(runtime.config);
+    const fileProgress = telemetry?.loadProgress ?? null;
     return {
       loadElapsedMs: elapsed,
-      loadPhase: runtime.loadPhase,
+      loadPhase: telemetry?.loadPhase ?? runtime.loadPhase,
       loadProgress: fileProgress,
       loadProgressSource: fileProgress === null ? null : 'progress_file',
       loadStartedAt: runtime.loadStartedAt,
     };
   }
 
-  private readRuntimeLoadProgress(runtime: ManagedRuntimeConfig): number | null {
-    if (!runtime.loadProgressPath) return null;
+  private workStatusItem(
+    item: GpuWorkItem,
+    runtimeTelemetry: Map<string, RuntimeProgressTelemetry>,
+  ): GpuQueueStatusItem {
+    return {
+      activeDurationMs: this.workActiveDurationMs(item),
+      ageMs: ageMs(item.createdAt) ?? 0,
+      createdAt: item.createdAt,
+      deadlineAt: item.deadlineAt,
+      errorText: item.errorText,
+      finishedAt: item.finishedAt,
+      id: item.id,
+      model: item.model,
+      priority: item.priority,
+      publicJobId: item.publicJobId,
+      runtimeAlias: item.model,
+      ...runtimeDescriptor(item.kind),
+      source: item.source,
+      startedAt: item.startedAt,
+      state: item.state,
+      ...this.telemetryStatus(item.id, item.model, runtimeTelemetry),
+    };
+  }
+
+  private workActiveDurationMs(item: GpuWorkItem): number | null {
+    if (!item.startedAt) return null;
+    if (!item.finishedAt) return ageMs(item.startedAt);
+    const started = Date.parse(item.startedAt);
+    const finished = Date.parse(item.finishedAt);
+    if (!Number.isFinite(started) || !Number.isFinite(finished)) return null;
+    return Math.max(0, finished - started);
+  }
+
+  private runtimeTelemetryMap(): Map<string, RuntimeProgressTelemetry> {
+    const telemetry = new Map<string, RuntimeProgressTelemetry>();
+    for (const runtime of this.runtimes.values()) {
+      telemetry.set(runtime.config.alias.toLowerCase(), this.readRuntimeTelemetry(runtime.config));
+    }
+    return telemetry;
+  }
+
+  private readRuntimeTelemetry(runtime: ManagedRuntimeConfig): RuntimeProgressTelemetry {
+    if (!runtime.loadProgressPath) return emptyRuntimeTelemetry();
     try {
-      return parseProgressText(readFileSync(runtime.loadProgressPath, 'utf8'));
+      return parseRuntimeTelemetryText(readFileSync(runtime.loadProgressPath, 'utf8'));
     } catch {
-      return null;
+      return emptyRuntimeTelemetry();
     }
   }
 
@@ -982,7 +1120,12 @@ export class GpuCoordinator {
       mkdirSync(dirname(runtime.loadProgressPath), { recursive: true });
       writeFileSync(
         runtime.loadProgressPath,
-        JSON.stringify({ phase: 'starting', updated_at: nowIso() }) + '\n',
+        JSON.stringify({
+          load_phase: 'starting',
+          load_progress: null,
+          prefill_progress: null,
+          updated_at: nowIso(),
+        }) + '\n',
         'utf8',
       );
     } catch {
@@ -990,20 +1133,28 @@ export class GpuCoordinator {
     }
   }
 
-  private telemetryStatus(workItemId: string): {
+  private telemetryStatus(workItemId: string, model?: string, runtimeTelemetry?: Map<string, RuntimeProgressTelemetry>): {
     bandwidthBps: number;
     phase: string;
+    prefillProgress: number | null;
+    prefillTaskId: number | null;
+    prefillInputDone: number | null;
+    prefillInputTotal: number | null;
     requestBytes: number;
     responseBytes: number;
     timeToFirstByteMs: number | null;
     upstreamElapsedMs: number | null;
     upstreamName: string | null;
   } {
-    const telemetry = this.workTelemetry.get(workItemId);
+    const telemetry = this.workTelemetry.get(workItemId) ?? this.completedWorkTelemetry.get(workItemId);
     if (!telemetry) {
       return {
         bandwidthBps: 0,
         phase: 'unknown',
+        prefillInputDone: null,
+        prefillInputTotal: null,
+        prefillProgress: null,
+        prefillTaskId: null,
         requestBytes: 0,
         responseBytes: 0,
         timeToFirstByteMs: null,
@@ -1019,15 +1170,28 @@ export class GpuCoordinator {
       : null;
     const bytes = telemetry.requestBytes + telemetry.responseBytes;
     const seconds = elapsed && elapsed > 0 ? elapsed / 1000 : 0;
+    const runtimeProgress = model ? runtimeTelemetry?.get(model.toLowerCase()) : undefined;
+    const includePrefill = telemetry.phase === 'prefill' && this.isFreshTelemetry(runtimeProgress?.telemetryUpdatedAt);
     return {
       bandwidthBps: seconds > 0 ? Math.round(bytes / seconds) : 0,
       phase: telemetry.phase,
+      prefillInputDone: includePrefill ? runtimeProgress?.prefillTokensDone ?? null : null,
+      prefillInputTotal: includePrefill ? runtimeProgress?.prefillTokensTotal ?? null : null,
+      prefillProgress: includePrefill ? runtimeProgress?.prefillProgress ?? null : null,
+      prefillTaskId: includePrefill ? runtimeProgress?.prefillTaskId ?? null : null,
       requestBytes: telemetry.requestBytes,
       responseBytes: telemetry.responseBytes,
       timeToFirstByteMs: firstByte,
       upstreamElapsedMs: elapsed,
       upstreamName: telemetry.upstreamName,
     };
+  }
+
+  private isFreshTelemetry(updatedAt: string | null | undefined): boolean {
+    if (!updatedAt) return false;
+    const updated = Date.parse(updatedAt);
+    if (!Number.isFinite(updated)) return false;
+    return Date.now() - updated <= 30000;
   }
 
   private updateTelemetry(workItemId: string, patch: Partial<WorkTelemetry>): void {
@@ -1168,12 +1332,25 @@ export class GpuCoordinator {
   private cleanupPending(workItemId: string): void {
     const pending = this.pending.get(workItemId);
     if (!pending) return;
+    const telemetry = this.workTelemetry.get(workItemId);
+    if (telemetry) {
+      this.completedWorkTelemetry.set(workItemId, { ...telemetry });
+      this.pruneCompletedTelemetry();
+    }
     this.clearPendingTimeout(pending);
     if (pending.clientAbort) {
       pending.clientSignal?.removeEventListener('abort', pending.clientAbort);
     }
     this.pending.delete(workItemId);
     this.workTelemetry.delete(workItemId);
+  }
+
+  private pruneCompletedTelemetry(): void {
+    while (this.completedWorkTelemetry.size > 100) {
+      const oldest = this.completedWorkTelemetry.keys().next().value;
+      if (!oldest) return;
+      this.completedWorkTelemetry.delete(oldest);
+    }
   }
 
   private clearPendingTimeout(pending: PendingWork): void {
