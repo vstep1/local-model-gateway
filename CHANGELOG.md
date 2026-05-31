@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## v0.4.0 - 2026-05-31
+
+### Added
+
+- Added durable runtime timeline events for queued work, runtime load/unload, cancellation, timeout, and failure history.
+- Added dashboard Recent Work filters and a Runtime Timeline panel.
+- Added the read-only MCP `runtime_history` tool.
+
 ## v0.3.0 - 2026-05-23
 
 ### Added

@@ -17,6 +17,8 @@ import {
   RuntimeAdapterKind,
   RuntimeMode,
   RuntimeProgressTelemetry,
+  RuntimeTimelineEvent,
+  RuntimeTimelineEventType,
 } from './types.js';
 import { makeProxyError, proxyOpenAiJson, type ProxyTelemetryCallbacks } from './openai-upstreams.js';
 
@@ -46,6 +48,11 @@ function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
 
+function truncateMessage(value: string, max = 220): string {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  return compact.length > max ? `${compact.slice(0, max - 1)}…` : compact;
+}
+
 function runtimeDescriptor(kind: GpuWorkKind): {
   runtimeAdapter: RuntimeAdapterKind;
   runtimeMode: RuntimeMode;
@@ -61,6 +68,23 @@ function runtimeDescriptor(kind: GpuWorkKind): {
     runtimeAdapter: 'llama_cli',
     runtimeMode: 'one_shot_command',
   };
+}
+
+function workEventType(state: Exclude<GpuWorkState, 'queued' | 'running'>): RuntimeTimelineEventType {
+  if (state === 'timed_out') return 'work_timed_out';
+  return `work_${state}` as RuntimeTimelineEventType;
+}
+
+function failureCategory(state: GpuWorkState, errorText: string | null | undefined): string | null {
+  if (state === 'cancelled') return 'client_cancelled';
+  if (state === 'timed_out') return 'queue_timeout';
+  if (state !== 'failed') return null;
+  const text = (errorText ?? '').toLowerCase();
+  if (text.includes('gateway_restarted') || text.includes('startup_recovery')) return 'gateway_restarted';
+  if (text.includes('failed to load') || text.includes('load timeout') || text.includes('health did not become ready')) return 'runtime_load_failed';
+  if (text.includes('empty output')) return 'empty_output';
+  if (text.includes('http ') || text.includes('upstream') || text.includes('fetch failed')) return 'upstream_error';
+  return 'unknown';
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -251,6 +275,11 @@ export interface GpuCoordinatorHooks {
   ) => Promise<void>;
 }
 
+export interface GpuCoordinatorStatusOptions {
+  recentLimit?: number;
+  timelineLimit?: number;
+}
+
 export class GpuCoordinator {
   private readonly runtimes = new Map<string, RuntimeState>();
   private readonly pending = new Map<string, PendingWork>();
@@ -329,6 +358,7 @@ export class GpuCoordinator {
     })));
 
     for (const { healthy, runtime } of checks) {
+      const previousState = runtime.state;
       if (runtime.state === 'loading' || runtime.state === 'unloading' || runtime.activeRequests > 0) {
         continue;
       }
@@ -339,6 +369,9 @@ export class GpuCoordinator {
         runtime.lastLoadError = null;
         runtime.loadPhase = 'ready';
         runtime.loadStartedAt = null;
+        if (previousState !== 'loaded') {
+          this.recordRuntimeTimeline('runtime_adopted_loaded', runtime, 'Runtime is already loaded and healthy');
+        }
       } else if (runtime.state === 'loaded') {
         runtime.state = 'unloaded';
         runtime.loadPhase = null;
@@ -347,14 +380,17 @@ export class GpuCoordinator {
     }
   }
 
-  status(): {
+  status(options: GpuCoordinatorStatusOptions = {}): {
     active_work: GpuQueueStatusItem[];
     gpu_queue: GpuQueueStatusItem[];
     loaded_model: string | null;
     loading_model: string | null;
     managed_runtimes: ManagedRuntimeStatus[];
     recent_work: GpuQueueStatusItem[];
+    runtime_timeline: RuntimeTimelineEvent[];
   } {
+    const recentLimit = Math.max(1, Math.min(options.recentLimit ?? 20, 200));
+    const timelineLimit = Math.max(1, Math.min(options.timelineLimit ?? 100, 500));
     const queued = this.store.listGpuWorkItems(500).filter((item) => (
       item.state === 'queued' || item.state === 'running'
     ));
@@ -398,8 +434,9 @@ export class GpuCoordinator {
       .listRunningGpuWorkItems()
       .map((item) => this.workStatusItem(item, runtimeTelemetry));
     const recentWork = this.store
-      .listGpuWorkItems(20)
+      .listGpuWorkItems(Math.max(recentLimit * 2, 50))
       .filter((item) => item.state !== 'queued' && item.state !== 'running')
+      .slice(0, recentLimit)
       .map((item) => this.workStatusItem(item, runtimeTelemetry));
 
     return {
@@ -409,6 +446,7 @@ export class GpuCoordinator {
       loading_model: this.loadingRuntimeModel(),
       managed_runtimes: runtimes,
       recent_work: recentWork,
+      runtime_timeline: this.store.listRuntimeTimelineEvents({ limit: timelineLimit }),
     };
   }
 
@@ -642,6 +680,11 @@ export class GpuCoordinator {
       upstreamName: null,
       upstreamStartedAt: null,
     });
+    this.recordWorkTimeline(workItem, 'work_queued', `Queued ${workItem.model}`, {
+      priority: workItem.priority,
+      publicJobId: workItem.publicJobId,
+      ...runtimeDescriptor(workItem.kind),
+    });
 
     return new Promise<GpuLease>((resolve, reject) => {
       const controller = new AbortController();
@@ -704,13 +747,16 @@ export class GpuCoordinator {
       this.cleanupPending(item.id);
       return;
     }
+    this.recordWorkTimeline(running, 'work_started', `Started ${running.model}`, {
+      ...runtimeDescriptor(running.kind),
+    });
 
     try {
       if (item.kind === 'runtime') {
         this.updateTelemetry(item.id, { phase: 'loading_model' });
         const runtime = await this.ensureRuntimeReady(item.model, pending.controller.signal);
         if (pending.controller.signal.aborted) {
-          this.store.finishGpuWorkItem(item.id, 'cancelled', 'Client cancelled request');
+          this.finishWorkItem(item.id, 'cancelled', 'Client cancelled request');
           this.scheduleIdleUnload(runtime);
           pending.reject(new GpuAdmissionError('Client cancelled request', 499));
           this.cleanupPending(item.id);
@@ -728,7 +774,7 @@ export class GpuCoordinator {
             runtime.activeWorkItemIds.delete(item.id);
             runtime.lastUsedAt = nowIso();
             if (state === 'failed') runtime.lastError = errorText ?? 'Runtime request failed';
-            this.store.finishGpuWorkItem(item.id, state, errorText);
+            this.finishWorkItem(item.id, state, errorText);
             this.cleanupPending(item.id);
             this.scheduleIdleUnload(runtime);
             this.pump();
@@ -742,7 +788,7 @@ export class GpuCoordinator {
 
       await this.unloadLoadedRuntime();
       if (pending.controller.signal.aborted) {
-        this.store.finishGpuWorkItem(item.id, 'cancelled', 'Client cancelled request');
+        this.finishWorkItem(item.id, 'cancelled', 'Client cancelled request');
         pending.reject(new GpuAdmissionError('Client cancelled request', 499));
         this.cleanupPending(item.id);
         return;
@@ -756,7 +802,7 @@ export class GpuCoordinator {
           if (this.activeOneShotWorkItemId === item.id) {
             this.activeOneShotWorkItemId = null;
           }
-          this.store.finishGpuWorkItem(item.id, state, errorText);
+          this.finishWorkItem(item.id, state, errorText);
           this.cleanupPending(item.id);
           this.pump();
         }),
@@ -765,7 +811,7 @@ export class GpuCoordinator {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.store.finishGpuWorkItem(item.id, 'failed', message);
+      this.finishWorkItem(item.id, 'failed', message);
       pending.reject(
         error instanceof GpuAdmissionError ? error : new GpuAdmissionError(message, 503),
       );
@@ -792,6 +838,7 @@ export class GpuCoordinator {
       runtime.loadPhase = 'ready';
       runtime.loadStartedAt = null;
       runtime.lastUsedAt = nowIso();
+      this.recordRuntimeTimeline('runtime_adopted_loaded', runtime, 'Runtime is already loaded and healthy');
       return runtime;
     }
 
@@ -806,6 +853,7 @@ export class GpuCoordinator {
     runtime.lastLoadError = null;
     runtime.loadPhase = 'starting_service';
     runtime.loadStartedAt = nowIso();
+    this.recordRuntimeTimeline('runtime_load_started', runtime, 'Load started');
     try {
       this.resetRuntimeLoadProgress(runtime.config);
       await this.runServiceCommand(
@@ -822,6 +870,7 @@ export class GpuCoordinator {
       runtime.loadPhase = 'ready';
       runtime.loadStartedAt = null;
       runtime.lastUsedAt = nowIso();
+      this.recordRuntimeTimeline('runtime_load_succeeded', runtime, 'Load succeeded');
       return runtime;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -829,6 +878,9 @@ export class GpuCoordinator {
       runtime.lastError = message;
       runtime.lastLoadError = message;
       runtime.loadPhase = 'failed';
+      this.recordRuntimeTimeline('runtime_load_failed', runtime, 'Load failed', {
+        errorText: truncateMessage(message),
+      });
       if (error instanceof GpuAdmissionError) {
         throw error;
       }
@@ -862,17 +914,22 @@ export class GpuCoordinator {
     runtime.state = 'unloading';
     runtime.loadPhase = 'unloading';
     runtime.loadStartedAt = null;
+    this.recordRuntimeTimeline('runtime_unload_started', runtime, force ? 'Force unload started' : 'Unload started');
     try {
       await this.runServiceCommand(runtime.config, runtime.config.stopArgs, runtime.config.stopTimeoutMs);
       await this.waitForHealth(runtime.config, false, runtime.config.stopTimeoutMs);
       runtime.state = 'unloaded';
       runtime.lastError = null;
       runtime.loadPhase = null;
+      this.recordRuntimeTimeline('runtime_unload_succeeded', runtime, 'Unload succeeded');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       runtime.state = 'failed';
       runtime.lastError = message;
       runtime.loadPhase = 'failed';
+      this.recordRuntimeTimeline('runtime_unload_failed', runtime, 'Unload failed', {
+        errorText: truncateMessage(message),
+      });
     }
   }
 
@@ -1068,12 +1125,14 @@ export class GpuCoordinator {
     item: GpuWorkItem,
     runtimeTelemetry: Map<string, RuntimeProgressTelemetry>,
   ): GpuQueueStatusItem {
+    const itemFailureCategory = failureCategory(item.state, item.errorText);
     return {
       activeDurationMs: this.workActiveDurationMs(item),
       ageMs: ageMs(item.createdAt) ?? 0,
       createdAt: item.createdAt,
       deadlineAt: item.deadlineAt,
       errorText: item.errorText,
+      failureCategory: itemFailureCategory,
       finishedAt: item.finishedAt,
       id: item.id,
       model: item.model,
@@ -1088,6 +1147,44 @@ export class GpuCoordinator {
     };
   }
 
+  private finishWorkItem(
+    workItemId: string,
+    state: Exclude<GpuWorkState, 'queued' | 'running'>,
+    errorText?: string,
+  ): GpuWorkItem | null {
+    const before = this.store.getGpuWorkItemById(workItemId);
+    const finished = this.store.finishGpuWorkItem(workItemId, state, errorText);
+    if (before && (before.state === 'queued' || before.state === 'running') && finished) {
+      const category = failureCategory(state, errorText);
+      this.recordWorkTimeline(
+        finished,
+        workEventType(state),
+        this.workTimelineMessage(finished, state, category),
+        {
+          errorText: errorText ? truncateMessage(errorText) : null,
+          failureCategory: category,
+          ...runtimeDescriptor(finished.kind),
+        },
+      );
+    }
+    return finished;
+  }
+
+  private workTimelineMessage(
+    item: GpuWorkItem,
+    state: Exclude<GpuWorkState, 'queued' | 'running'>,
+    category: string | null,
+  ): string {
+    const descriptor = runtimeDescriptor(item.kind);
+    const label = descriptor.runtimeMode === 'one_shot_command'
+      ? `${item.model} one-shot`
+      : item.model;
+    if (state === 'succeeded') return `${label} succeeded`;
+    if (state === 'cancelled') return `${label} cancelled`;
+    if (state === 'timed_out') return `${label} timed out`;
+    return `${label} failed${category ? ` (${category.replace(/_/g, ' ')})` : ''}`;
+  }
+
   private workActiveDurationMs(item: GpuWorkItem): number | null {
     if (!item.startedAt) return null;
     if (!item.finishedAt) return ageMs(item.startedAt);
@@ -1095,6 +1192,51 @@ export class GpuCoordinator {
     const finished = Date.parse(item.finishedAt);
     if (!Number.isFinite(started) || !Number.isFinite(finished)) return null;
     return Math.max(0, finished - started);
+  }
+
+  private recordWorkTimeline(
+    item: GpuWorkItem,
+    eventType: RuntimeTimelineEventType,
+    message: string,
+    metadata: Record<string, unknown> = {},
+  ): void {
+    try {
+      this.store.insertRuntimeTimelineEvent({
+        eventType,
+        message: truncateMessage(message),
+        metadata,
+        runtimeAlias: item.model,
+        source: item.source,
+        state: item.state,
+        workItemId: item.id,
+      });
+    } catch {
+      // Timeline telemetry must never interrupt inference.
+    }
+  }
+
+  private recordRuntimeTimeline(
+    eventType: RuntimeTimelineEventType,
+    runtime: RuntimeState,
+    message: string,
+    metadata: Record<string, unknown> = {},
+  ): void {
+    try {
+      this.store.insertRuntimeTimelineEvent({
+        eventType,
+        message: truncateMessage(`${runtime.config.alias}: ${message}`),
+        metadata: {
+          healthUrl: runtime.config.healthUrl,
+          maxConcurrency: runtime.config.maxConcurrency,
+          upstreamModel: runtime.config.upstreamModel,
+          ...metadata,
+        },
+        runtimeAlias: runtime.config.alias,
+        state: runtime.state,
+      });
+    } catch {
+      // Timeline telemetry must never interrupt runtime management.
+    }
   }
 
   private runtimeTelemetryMap(): Map<string, RuntimeProgressTelemetry> {
@@ -1307,7 +1449,7 @@ export class GpuCoordinator {
     if (!item) return null;
 
     const pending = this.pending.get(workItemId);
-    const finished = this.store.finishGpuWorkItem(workItemId, state, reason);
+    const finished = this.finishWorkItem(workItemId, state, reason);
     if (pending) {
       pending.controller.abort(new Error(reason));
       if (item.state === 'queued') {

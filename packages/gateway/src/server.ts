@@ -39,6 +39,12 @@ function authorized(request: Request, authToken: string): boolean {
   return header === `Bearer ${authToken}`;
 }
 
+function cappedInteger(value: string | undefined, fallback: number, max: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
+  return Math.max(1, Math.min(Math.trunc(numeric), max));
+}
+
 function gatewayUrls(config: GatewayConfig): {
   base: string;
   dashboard: string;
@@ -232,6 +238,8 @@ export async function startGateway(): Promise<void> {
 
   app.get('/status', async (c) => {
     await gpuCoordinator.refreshRuntimeHealth();
+    const recentLimit = cappedInteger(c.req.query('recent_limit'), 20, 200);
+    const timelineLimit = cappedInteger(c.req.query('timeline_limit'), 100, 500);
     c.header('Cache-Control', 'no-store');
     return c.json(redactForStatus({
       config: {
@@ -242,7 +250,7 @@ export async function startGateway(): Promise<void> {
       },
       queue: scheduler.queueStatus(),
       service: 'local-model-gateway',
-      ...gpuCoordinator.status(),
+      ...gpuCoordinator.status({ recentLimit, timelineLimit }),
       upstreams: upstreamPool.describe(),
       uptime_seconds: Math.floor(process.uptime()),
     }));

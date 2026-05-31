@@ -248,6 +248,39 @@ async function createSchedulerHarness(
 }
 
 describe('gpu coordinator', () => {
+  it('stores filters and prunes runtime timeline events', () => {
+    const store = createStore();
+    try {
+      const first = store.insertRuntimeTimelineEvent({
+        eventType: 'work_queued',
+        message: 'Queued ep2',
+        metadata: { priority: 1 },
+        runtimeAlias: 'ep2',
+        source: 'mcp',
+        state: 'queued',
+        workItemId: 'work-1',
+      });
+      store.insertRuntimeTimelineEvent({
+        eventType: 'runtime_load_started',
+        message: 'qwen3-32b: Load started',
+        runtimeAlias: 'qwen3-32b',
+        state: 'loading',
+      });
+
+      assert.equal(store.listRuntimeTimelineEvents({ limit: 10 }).length, 2);
+      assert.equal(store.listRuntimeTimelineEvents({ runtimeAlias: 'ep2' })[0].id, first.id);
+      assert.equal(store.listRuntimeTimelineEvents({ workItemId: 'work-1' })[0].eventType, 'work_queued');
+
+      store.db
+        .prepare("UPDATE gpu_timeline_events SET created_at='2000-01-01T00:00:00.000Z' WHERE id=?")
+        .run(first.id);
+      assert.equal(store.pruneRuntimeTimelineEvents(7), 1);
+      assert.equal(store.listRuntimeTimelineEvents({ limit: 10 }).some((event) => event.id === first.id), false);
+    } finally {
+      store.close();
+    }
+  });
+
   it('adopts an already-healthy target runtime without restarting it', async () => {
     const qwen = await startFakeOpenAiServer('qwen');
     const store = createStore();
@@ -267,6 +300,7 @@ describe('gpu coordinator', () => {
 
       assert.equal(await (await request).json().then((body: any) => body.choices[0].message.content), 'adopted');
       assert.deepEqual(commands, []);
+      assert.equal(coordinator.status().runtime_timeline.some((event) => event.eventType === 'runtime_adopted_loaded'), true);
     } finally {
       store.close();
       await qwen.close();
@@ -335,6 +369,9 @@ describe('gpu coordinator', () => {
       await qwen.waitForRequests(1);
       qwen.releaseNext('loaded');
       assert.equal(await (await request).json().then((body: any) => body.choices[0].message.content), 'loaded');
+      const events = coordinator.status().runtime_timeline.map((event) => event.eventType);
+      assert.equal(events.includes('runtime_load_started'), true);
+      assert.equal(events.includes('runtime_load_succeeded'), true);
     } finally {
       store.close();
       await fs.rm(root, { force: true, recursive: true });
@@ -866,6 +903,8 @@ describe('gpu coordinator', () => {
       assert.equal(aborted.status, 499);
       assert.equal(coordinator.status().gpu_queue.filter((item) => item.state === 'queued').length, 0);
       assert.equal(store.listGpuWorkItems(10, 'cancelled').length, 1);
+      assert.equal(coordinator.status().recent_work[0].failureCategory, 'client_cancelled');
+      assert.equal(coordinator.status().runtime_timeline[0].eventType, 'work_cancelled');
       assert.equal(minimax.requests.length, 0);
 
       qwen.releaseNext('held-done');
@@ -931,6 +970,9 @@ describe('gpu coordinator', () => {
       assert.equal(active.phase, 'command_running');
       assert.equal('kind' in active, false);
       assert.equal('type' in active, false);
+      const activeEvents = coordinator.status().runtime_timeline.map((event) => event.eventType);
+      assert.equal(activeEvents.includes('work_queued'), true);
+      assert.equal(activeEvents.includes('work_started'), true);
 
       release();
       assert.equal(await running, 'done');
@@ -943,6 +985,7 @@ describe('gpu coordinator', () => {
       assert.equal(recent.state, 'succeeded');
       assert.equal('kind' in recent, false);
       assert.equal('type' in recent, false);
+      assert.equal(coordinator.status().runtime_timeline[0].eventType, 'work_succeeded');
     } finally {
       store.close();
     }

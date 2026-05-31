@@ -17,9 +17,14 @@ const chatSchema = z
       )
       .min(1),
     max_queue_wait_ms: z.number().int().positive().optional(),
+    max_completion_tokens: z.number().int().positive().optional(),
+    max_tokens: z.number().int().positive().optional(),
     model: z.string().optional(),
     priority: z.number().int().optional(),
+    repeat_penalty: z.number().positive().optional(),
     stream: z.boolean().optional().default(false),
+    temperature: z.number().min(0).optional(),
+    top_p: z.number().positive().max(1).optional(),
   })
   .passthrough();
 
@@ -28,9 +33,14 @@ const responsesSchema = z
     input: z.unknown(),
     instructions: z.string().optional(),
     max_queue_wait_ms: z.number().int().positive().optional(),
+    max_output_tokens: z.number().int().positive().optional(),
+    max_tokens: z.number().int().positive().optional(),
     model: z.string().optional(),
     priority: z.number().int().optional(),
+    repeat_penalty: z.number().positive().optional(),
     stream: z.boolean().optional().default(false),
+    temperature: z.number().min(0).optional(),
+    top_p: z.number().positive().max(1).optional(),
   })
   .passthrough();
 
@@ -80,6 +90,20 @@ function asPriority(value: number | undefined): 0 | 1 | 2 | undefined {
   if (value <= 0) return 0;
   if (value >= 2) return 2;
   return 1;
+}
+
+function generationOverridesFromOpenAi(parsed: Record<string, unknown>): Record<string, number> {
+  const out: Record<string, number> = {};
+  const maxTokens = parsed.max_tokens ?? parsed.max_completion_tokens ?? parsed.max_output_tokens;
+  if (typeof maxTokens === 'number' && Number.isFinite(maxTokens)) out.maxTokens = maxTokens;
+  if (typeof parsed.temperature === 'number' && Number.isFinite(parsed.temperature)) {
+    out.temperature = parsed.temperature;
+  }
+  if (typeof parsed.top_p === 'number' && Number.isFinite(parsed.top_p)) out.topP = parsed.top_p;
+  if (typeof parsed.repeat_penalty === 'number' && Number.isFinite(parsed.repeat_penalty)) {
+    out.repeatPenalty = parsed.repeat_penalty;
+  }
+  return out;
 }
 
 const STOP_COMMANDS = new Set([
@@ -363,6 +387,7 @@ export function registerOpenAiRoutes(
     }
 
     const prompt = compilePromptFromMessages(parsed.messages as ChatMessage[]);
+    const generationOverrides = generationOverridesFromOpenAi(parsed as Record<string, unknown>);
 
     let job: JobRecord;
     try {
@@ -373,6 +398,7 @@ export function registerOpenAiRoutes(
         prompt,
         metadata: {
           endpoint: '/v1/chat/completions',
+          generation_overrides: generationOverrides,
           stream: parsed.stream,
         },
       });
@@ -541,6 +567,7 @@ export function registerOpenAiRoutes(
     }
 
     const prompt = compilePromptFromMessages(messages);
+    const generationOverrides = generationOverridesFromOpenAi(parsed as Record<string, unknown>);
 
     let job: JobRecord;
     try {
@@ -551,6 +578,7 @@ export function registerOpenAiRoutes(
         prompt,
         metadata: {
           endpoint: '/v1/responses',
+          generation_overrides: generationOverrides,
           stream: parsed.stream,
         },
       });

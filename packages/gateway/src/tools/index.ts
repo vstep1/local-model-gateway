@@ -80,6 +80,7 @@ export function registerTools(
           gpu_queue: [],
           managed_runtimes: [],
           recent_work: [],
+          runtime_timeline: [],
         }),
       });
     },
@@ -282,8 +283,28 @@ export function registerTools(
           gpu_queue: [],
           managed_runtimes: [],
           recent_work: [],
+          runtime_timeline: [],
         },
       );
+    },
+  });
+
+  server.addTool({
+    name: 'runtime_history',
+    description: 'Show recent local GPU runtime timeline events, optionally filtered by runtime alias or work item id.',
+    parameters: z.object({
+      limit: z.number().int().positive().max(500).optional().default(100),
+      runtime_alias: z.string().optional(),
+      work_item_id: z.string().optional(),
+    }),
+    execute: async (args) => {
+      return textResult({
+        runtime_timeline: store.listRuntimeTimelineEvents({
+          limit: args.limit,
+          runtimeAlias: args.runtime_alias,
+          workItemId: args.work_item_id,
+        }),
+      });
     },
   });
 

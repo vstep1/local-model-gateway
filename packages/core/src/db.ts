@@ -3,12 +3,15 @@ import crypto from 'node:crypto';
 import {
   ActiveRuntimeSettings,
   CreateGpuWorkItemInput,
+  CreateRuntimeTimelineEventInput,
   GpuWorkItem,
   GpuWorkState,
   JobRecord,
   JobState,
+  ListRuntimeTimelineEventsOptions,
   ModelRecord,
   QueueStatus,
+  RuntimeTimelineEvent,
   SubmitJobInput,
 } from './types.js';
 import { CONFIG_KEYS } from './config.js';
@@ -55,6 +58,18 @@ interface GpuWorkItemRow {
   public_job_id: string | null;
   metadata_json: string;
   error_text: string | null;
+}
+
+interface RuntimeTimelineEventRow {
+  id: number;
+  event_type: RuntimeTimelineEvent['eventType'];
+  runtime_alias: string | null;
+  work_item_id: string | null;
+  source: RuntimeTimelineEvent['source'];
+  state: RuntimeTimelineEvent['state'];
+  message: string;
+  metadata_json: string;
+  created_at: string;
 }
 
 const TERMINAL_STATES: JobState[] = ['succeeded', 'failed', 'cancelled', 'timed_out'];
@@ -105,6 +120,20 @@ function mapGpuWorkItemRow(row: GpuWorkItemRow): GpuWorkItem {
     publicJobId: row.public_job_id,
     metadataJson: row.metadata_json,
     errorText: row.error_text,
+  };
+}
+
+function mapRuntimeTimelineEventRow(row: RuntimeTimelineEventRow): RuntimeTimelineEvent {
+  return {
+    id: row.id,
+    eventType: row.event_type,
+    runtimeAlias: row.runtime_alias,
+    workItemId: row.work_item_id,
+    source: row.source,
+    state: row.state,
+    message: row.message,
+    metadataJson: row.metadata_json,
+    createdAt: row.created_at,
   };
 }
 
@@ -205,6 +234,34 @@ export class GatewayStore {
 
             CREATE INDEX IF NOT EXISTS idx_gpu_work_public_job_id
             ON gpu_work_items (public_job_id);
+          `);
+        },
+      },
+      {
+        id: 2,
+        name: 'create_gpu_timeline_events',
+        run: () => {
+          this.db.exec(`
+            CREATE TABLE IF NOT EXISTS gpu_timeline_events (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              event_type TEXT NOT NULL,
+              runtime_alias TEXT,
+              work_item_id TEXT,
+              source TEXT,
+              state TEXT,
+              message TEXT NOT NULL,
+              metadata_json TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_gpu_timeline_created
+            ON gpu_timeline_events (created_at DESC, id DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_gpu_timeline_runtime
+            ON gpu_timeline_events (runtime_alias, created_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_gpu_timeline_work_item
+            ON gpu_timeline_events (work_item_id, created_at DESC);
           `);
         },
       },
@@ -614,6 +671,58 @@ export class GatewayStore {
     return rows.map(mapGpuWorkItemRow);
   }
 
+  insertRuntimeTimelineEvent(input: CreateRuntimeTimelineEventInput): RuntimeTimelineEvent {
+    const createdAt = nowIso();
+    const result = this.db
+      .prepare(`
+        INSERT INTO gpu_timeline_events (
+          event_type, runtime_alias, work_item_id, source, state, message,
+          metadata_json, created_at
+        ) VALUES (
+          @eventType, @runtimeAlias, @workItemId, @source, @state, @message,
+          @metadataJson, @createdAt
+        )
+      `)
+      .run({
+        eventType: input.eventType,
+        runtimeAlias: input.runtimeAlias ?? null,
+        workItemId: input.workItemId ?? null,
+        source: input.source ?? null,
+        state: input.state ?? null,
+        message: input.message,
+        metadataJson: JSON.stringify(input.metadata ?? {}),
+        createdAt,
+      });
+
+    const row = this.db
+      .prepare('SELECT * FROM gpu_timeline_events WHERE id = ?')
+      .get(result.lastInsertRowid) as RuntimeTimelineEventRow;
+    return mapRuntimeTimelineEventRow(row);
+  }
+
+  listRuntimeTimelineEvents(options: ListRuntimeTimelineEventsOptions = {}): RuntimeTimelineEvent[] {
+    const limit = Math.max(1, Math.min(options.limit ?? 100, 500));
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (options.runtimeAlias) {
+      where.push('runtime_alias = ?');
+      params.push(options.runtimeAlias);
+    }
+    if (options.workItemId) {
+      where.push('work_item_id = ?');
+      params.push(options.workItemId);
+    }
+
+    const sql = `
+      SELECT * FROM gpu_timeline_events
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `;
+    const rows = this.db.prepare(sql).all(...params, limit) as RuntimeTimelineEventRow[];
+    return rows.map(mapRuntimeTimelineEventRow);
+  }
+
   listQueuedGpuWorkItems(): GpuWorkItem[] {
     const rows = this.db
       .prepare(`
@@ -792,6 +901,12 @@ export class GatewayStore {
     const placeholders = TERMINAL_STATES.map(() => '?').join(', ');
     const sql = `DELETE FROM jobs WHERE state IN (${placeholders}) AND finished_at IS NOT NULL AND finished_at < ?`;
     const result = this.db.prepare(sql).run(...TERMINAL_STATES, cutoff);
+    return result.changes;
+  }
+
+  pruneRuntimeTimelineEvents(ttlDays: number): number {
+    const cutoff = new Date(Date.now() - ttlDays * 24 * 60 * 60 * 1000).toISOString();
+    const result = this.db.prepare('DELETE FROM gpu_timeline_events WHERE created_at < ?').run(cutoff);
     return result.changes;
   }
 

@@ -62,7 +62,7 @@ Local Model Gateway is:
 - a shared scheduler for GPU-bound local model work
 - a runtime residency manager for loading, unloading, and swapping local models
 - a browser dashboard for seeing loaded models, active work, queued requests,
-  recent completed work, prefill, and transfer telemetry
+  recent completed work, runtime history, prefill, and transfer telemetry
 - an MCP runtime surface for agents that need status, model discovery, setup
   snippets, and cancellation tools
 
@@ -85,7 +85,7 @@ multiple local agents and LLM apps at the same time.
 | Durable GPU queue | SQLite-backed priority/FIFO work admission across URL and MCP entrypoints. |
 | Runtime residency | Starts, health-checks, unloads, and swaps managed local runtimes on demand. |
 | Stop command cancellation | Exact user commands like `stop` or `cancel generation` cancel matching in-flight OpenAI work instead of starting another GPU request. |
-| Browser dashboard | Read-only `/dashboard` view for loaded models, load progress, prefill, bandwidth, active work, queued requests, and recent completed work. |
+| Browser dashboard | Read-only `/dashboard` view for loaded models, runtime history, load progress, prefill, bandwidth, active work, queued requests, and recent completed work. |
 | Launch adapters | macOS launchd and generic shell helpers now, with systemd/Docker planned. |
 | Lazy MCP broker | Keeps downstream MCP catalogs out of the prompt until a tool is actually searched or described. |
 | Discovery manifest | `/.well-known/local-model-gateway.json` for clients that want model, timeout, and endpoint hints. |
@@ -218,7 +218,8 @@ Useful setup and runtime tools:
 | `recommend_local_profile` | Pick a local runtime for a target prompt budget. |
 | `generate_client_config` | Emit generic OpenAI, generic MCP, or Hermes snippets. |
 | `validate_client_config` | Check that a client points at loopback protocol endpoints. |
-| `runtime_status` | Inspect active work, loaded model, queued work, and errors. |
+| `runtime_status` | Inspect active work, loaded model, queued work, recent work, timeline events, and errors. |
+| `runtime_history` | Inspect filtered runtime timeline events by runtime alias or work item id. |
 | `cancel_runtime_request` | Cancel queued or active runtime work by work item id. |
 | `force_unload_runtime` | Admin escape hatch for a stuck runtime. |
 

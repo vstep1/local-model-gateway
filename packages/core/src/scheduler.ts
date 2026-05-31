@@ -5,6 +5,7 @@ import { ModelRegistry } from './model-registry.js';
 import {
   ActiveRuntimeSettings,
   GenerationBackend,
+  GenerationOverrides,
   JobRecord,
   QueueStatus,
   SubmitJobInput,
@@ -39,6 +40,7 @@ export class Scheduler extends EventEmitter {
 
     this.pruneHandle = setInterval(() => {
       this.store.pruneFinishedJobs(this.settings.historyTtlDays);
+      this.store.pruneRuntimeTimelineEvents(this.settings.historyTtlDays);
     }, 60 * 60 * 1000);
 
     if (this.gpuCoordinator) {
@@ -271,10 +273,12 @@ export class Scheduler extends EventEmitter {
     }
 
     try {
+      const generationOverrides = generationOverridesForJob(job);
       const generate = () => this.backend.generate({
         prompt: job.prompt,
         modelAlias: job.model,
         adapterPath: model.adapterPath,
+        ...generationOverrides,
       });
 
       const result = this.gpuCoordinator
@@ -292,6 +296,7 @@ export class Scheduler extends EventEmitter {
                 prompt: job.prompt,
                 modelAlias: job.model,
                 adapterPath: model.adapterPath,
+                ...generationOverrides,
                 signal,
               });
             },
@@ -341,5 +346,25 @@ export class Scheduler extends EventEmitter {
         this.off('job:update', onUpdate);
       }
     }
+  }
+}
+
+function generationOverridesForJob(job: JobRecord): GenerationOverrides {
+  try {
+    const metadata = JSON.parse(job.metadataJson || '{}') as Record<string, unknown>;
+    const raw = metadata.generation_overrides;
+    if (!raw || typeof raw !== 'object') return {};
+
+    const source = raw as Record<string, unknown>;
+    const out: GenerationOverrides = {};
+    if (typeof source.maxTokens === 'number' && Number.isFinite(source.maxTokens)) out.maxTokens = source.maxTokens;
+    if (typeof source.temperature === 'number' && Number.isFinite(source.temperature)) out.temperature = source.temperature;
+    if (typeof source.topP === 'number' && Number.isFinite(source.topP)) out.topP = source.topP;
+    if (typeof source.repeatPenalty === 'number' && Number.isFinite(source.repeatPenalty)) {
+      out.repeatPenalty = source.repeatPenalty;
+    }
+    return out;
+  } catch {
+    return {};
   }
 }

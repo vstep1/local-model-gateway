@@ -1,6 +1,6 @@
 {
   "name": "local-model-gateway",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "CLI for lightweight local AI workstation management.",
   "license": "MIT",
   "type": "module",
@@ -18,9 +18,9 @@
     "typecheck": "tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "@local-model-gateway/core": "0.3.0",
-    "@local-model-gateway/gateway": "0.3.0",
-    "@local-model-gateway/runtime-adapters": "0.3.0",
+    "@local-model-gateway/core": "0.4.0",
+    "@local-model-gateway/gateway": "0.4.0",
+    "@local-model-gateway/runtime-adapters": "0.4.0",
     "yaml": "^2.8.2"
   }
 }

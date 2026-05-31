@@ -1,7 +1,7 @@
 {
   "name": "local-model-gateway-monorepo",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Lightweight local AI workstation management for coordinating model access across local agents and LLM apps.",
   "license": "MIT",
   "type": "module",

@@ -11,6 +11,7 @@ lib/
 
 # Runtime state
 data/
+cache/
 models/
 runtime/
 logs/
@@ -26,6 +27,7 @@ logs/
 .env.*
 !/.env.example
 local-model-gateway.config.yaml
+local-model-gateway.config.yaml.pre-*
 !examples/local-model-gateway.config.yaml
 
 # OS/editor

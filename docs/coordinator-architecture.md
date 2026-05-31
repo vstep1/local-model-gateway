@@ -4,6 +4,11 @@ The gateway has one durable GPU admission queue: `gpu_work_items`.
 
 OpenAI-compatible HTTP requests and MCP `submit_job` requests both enqueue GPU work through `GpuCoordinator`. The public `jobs` table remains the MCP-facing job API, but it is no longer the execution queue when the coordinator is enabled.
 
+Runtime history is recorded in `gpu_timeline_events`. It is a sanitized,
+dashboard-facing event stream for work admission, runtime load/unload, terminal
+work states, cancellations, timeouts, and startup adoption. It must not store
+prompts, request bodies, credentials, headers, or raw process output.
+
 ## Runtime Adapters
 
 The public model is runtime-first: every piece of GPU work has a runtime alias,

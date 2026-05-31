@@ -4,6 +4,20 @@ export type JobSource = 'openai' | 'mcp';
 export type GpuWorkKind = 'runtime' | 'exclusive';
 export type RuntimeAdapterKind = 'openai_service' | 'llama_cli';
 export type RuntimeMode = 'resident_service' | 'one_shot_command';
+export type RuntimeTimelineEventType =
+  | 'work_queued'
+  | 'work_started'
+  | 'work_succeeded'
+  | 'work_failed'
+  | 'work_cancelled'
+  | 'work_timed_out'
+  | 'runtime_adopted_loaded'
+  | 'runtime_load_started'
+  | 'runtime_load_succeeded'
+  | 'runtime_load_failed'
+  | 'runtime_unload_started'
+  | 'runtime_unload_succeeded'
+  | 'runtime_unload_failed';
 
 export type JobState =
   | 'queued'
@@ -49,6 +63,13 @@ export interface SubmitJobInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface GenerationOverrides {
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+  repeatPenalty?: number;
+}
+
 export interface QueueStatus {
   queued: number;
   running: number;
@@ -71,6 +92,34 @@ export interface GpuWorkItem {
   publicJobId: string | null;
   metadataJson: string;
   errorText: string | null;
+}
+
+export interface RuntimeTimelineEvent {
+  id: number;
+  eventType: RuntimeTimelineEventType;
+  runtimeAlias: string | null;
+  workItemId: string | null;
+  source: JobSource | null;
+  state: GpuWorkState | ManagedRuntimeState | null;
+  message: string;
+  metadataJson: string;
+  createdAt: string;
+}
+
+export interface CreateRuntimeTimelineEventInput {
+  eventType: RuntimeTimelineEventType;
+  runtimeAlias?: string | null;
+  workItemId?: string | null;
+  source?: JobSource | null;
+  state?: GpuWorkState | ManagedRuntimeState | null;
+  message: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ListRuntimeTimelineEventsOptions {
+  limit?: number;
+  runtimeAlias?: string;
+  workItemId?: string;
 }
 
 export interface CreateGpuWorkItemInput {
@@ -210,6 +259,7 @@ export interface GpuQueueStatusItem {
   createdAt: string;
   deadlineAt: string | null;
   errorText?: string | null;
+  failureCategory?: string | null;
   finishedAt?: string | null;
   id: string;
   model: string;
@@ -246,6 +296,10 @@ export interface GenerationRequest {
   prompt: string;
   modelAlias: string;
   adapterPath: string;
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
+  repeatPenalty?: number;
   signal?: AbortSignal;
 }
 

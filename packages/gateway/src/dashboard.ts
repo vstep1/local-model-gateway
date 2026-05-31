@@ -11,11 +11,25 @@ function boolAttr(value: boolean): string {
 
 export function dashboardHtml(options: DashboardHtmlOptions): string {
   const statusPath = options.statusPath ?? '/status';
+  const faviconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<style>
+:root{--bg:#f8fafc;--panel:#ffffff;--fg:#0f172a;--line:#cbd5e1;--blue:#2563eb;--green:#059669}
+@media (prefers-color-scheme: dark){:root{--bg:#0b0d0f;--panel:#111417;--fg:#f8fafc;--line:#334155;--blue:#4ea1ff;--green:#3ddc97}}
+</style>
+<rect width="64" height="64" rx="14" fill="var(--bg)"/>
+<rect x="13" y="14" width="38" height="30" rx="7" fill="var(--panel)" stroke="var(--line)" stroke-width="3"/>
+<path d="M22 24h20M22 34h13" stroke="var(--fg)" stroke-width="4" stroke-linecap="round"/>
+<circle cx="44" cy="38" r="6" fill="var(--green)"/>
+<path d="M12 50h40" stroke="var(--blue)" stroke-width="5" stroke-linecap="round"/>
+</svg>`;
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0d0f" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${encodeURIComponent(faviconSvg)}">
   <title>Local Model Gateway Dashboard</title>
   <style>
     :root {
@@ -49,10 +63,11 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       gap: 24px;
       margin-bottom: 24px;
     }
-    h1 { font-size: clamp(2rem, 4vw, 3.8rem); line-height: 1; margin: 0 0 10px; letter-spacing: 0; }
+    header > div:first-child { min-width: 0; }
+    h1 { font-size: 3.25rem; line-height: 1; margin: 0; letter-spacing: 0; white-space: nowrap; }
     h2 { font-size: 1rem; margin: 0 0 14px; color: #cbd5e1; font-weight: 700; }
     p { margin: 0; color: var(--muted); }
-    button, input {
+    button, input, select {
       border: 1px solid var(--border);
       background: #0f172a;
       color: var(--text);
@@ -63,8 +78,9 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     button { cursor: pointer; }
     button:hover { border-color: var(--blue); }
     input { min-width: min(420px, 100%); }
+    select { min-width: 128px; }
     .metric, .panel, .runtime-card, .telemetry-card { min-width: 0; }
-    .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .controls { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; justify-content: flex-end; }
     .token-panel {
       display: none;
       width: 100%;
@@ -121,11 +137,13 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       white-space: nowrap;
     }
     .state-loaded, .state-running, .state-succeeded { background: var(--green); }
+    .state-work-succeeded, .state-runtime-load-succeeded, .state-runtime-unload-succeeded, .state-runtime-adopted-loaded { background: var(--green); }
     .state-loading { background: var(--blue); }
+    .state-work-started, .state-runtime-load-started, .state-runtime-unload-started { background: var(--blue); }
     .state-prefill, .state-admitted, .state-loading-model { background: var(--blue); }
     .state-streaming, .state-receiving, .state-command-running { background: var(--green); }
-    .state-queued { background: var(--amber); }
-    .state-failed, .state-timed_out, .state-cancelled { background: var(--red); }
+    .state-queued, .state-work-queued { background: var(--amber); }
+    .state-failed, .state-timed_out, .state-cancelled, .state-work-failed, .state-work-cancelled, .state-work-timed-out, .state-runtime-load-failed, .state-runtime-unload-failed { background: var(--red); }
     .state-unloading { background: var(--purple); }
     .kv { display: grid; grid-template-columns: minmax(92px, 120px) minmax(0, 1fr); gap: 6px 10px; font-size: 0.88rem; }
     .kv span:nth-child(odd) { color: var(--muted); }
@@ -183,17 +201,139 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       color: #020617;
       background: var(--gray);
     }
+    .filter-row {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) repeat(3, minmax(120px, 1fr)) minmax(180px, 1.2fr);
+      gap: 8px;
+      margin: 0 0 12px;
+    }
+    .filter-row input, .filter-row select { min-width: 0; width: 100%; }
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0 0 16px;
+    }
+    .tab {
+      display: inline-flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 9px 13px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.76);
+      color: var(--muted);
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .tab:hover { border-color: var(--blue); color: var(--text); }
+    .tab.active {
+      border-color: rgba(78, 161, 255, 0.68);
+      background: rgba(78, 161, 255, 0.14);
+      color: var(--text);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .tab-stack { display: grid; gap: 16px; }
+    .timeline {
+      display: grid;
+      gap: 9px;
+      max-height: 360px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .timeline-event {
+      display: grid;
+      grid-template-columns: minmax(120px, 150px) minmax(0, 1fr);
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+    }
+    .timeline-time { color: var(--muted); font-size: 0.8rem; }
+    .timeline-message { min-width: 0; overflow-wrap: anywhere; }
+    .timeline-meta { margin-top: 4px; color: var(--muted); font-size: 0.8rem; }
+    .work-list { display: grid; gap: 10px; }
+    .work-card {
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 8px;
+      background: rgba(15, 18, 22, 0.72);
+      padding: 12px;
+    }
+    .work-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .work-title { min-width: 0; }
+    .work-title strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 100%;
+      font-family: Menlo, Consolas, ui-monospace, monospace;
+    }
+    .work-title span { display: block; margin-top: 3px; color: var(--muted); font-size: 0.8rem; }
+    .work-fields {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+      gap: 9px 14px;
+    }
+    .work-field { min-width: 0; }
+    .work-field.wide { grid-column: span 2; }
+    .work-field span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+    .work-field strong {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 0.88rem;
+    }
+    details summary { cursor: pointer; color: #dbeafe; }
+    details pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: #fecdd3;
+      margin: 6px 0 0;
+      font-family: Menlo, Consolas, ui-monospace, monospace;
+      font-size: 0.78rem;
+    }
     table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
     #active-work, #gpu-queue, #recent-work { overflow-x: auto; padding-bottom: 4px; }
-    #active-work table { min-width: 980px; }
+    #recent-work { max-height: 560px; overflow: auto; }
+    #active-work table { min-width: 1040px; }
     #gpu-queue table { min-width: 680px; }
-    #recent-work table { min-width: 900px; }
-    th, td { padding: 9px 8px; border-bottom: 1px solid rgba(148, 163, 184, 0.18); text-align: left; vertical-align: top; }
-    th { color: #d4d8dc; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0; }
+    #recent-work table { min-width: 1040px; }
+    th, td {
+      padding: 9px 8px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+    th {
+      color: #d4d8dc;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      position: sticky;
+      top: 0;
+      background: var(--panel);
+      z-index: 1;
+    }
     td.id { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     td.compact { max-width: 105px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .empty { color: var(--muted); padding: 18px 0; }
-    .last-updated { color: var(--muted); font-size: 0.88rem; }
+    .last-updated { color: var(--muted); font-size: 0.88rem; white-space: nowrap; }
     .error-lines { margin-top: 10px; color: #fecdd3; font-size: 0.84rem; display: grid; gap: 4px; }
     @keyframes indeterminate {
       0% { transform: translateX(-120%); }
@@ -202,8 +342,26 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     @media (max-width: 900px) {
       header { display: block; }
       .controls { justify-content: flex-start; margin-top: 18px; }
+      h1 { font-size: 2.6rem; }
       .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .grid { grid-template-columns: 1fr; }
+      .filter-row { grid-template-columns: 1fr; }
+      .tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .tab { justify-content: center; }
+      .work-field.wide { grid-column: span 1; }
+    }
+    @media (max-width: 620px) {
+      main { padding: 28px 16px 44px; }
+      h1 { font-size: 2rem; }
+    }
+    @media (max-width: 430px) {
+      main { padding-left: 12px; padding-right: 12px; }
+      h1 { font-size: 1.55rem; }
+      button, input, select { padding: 8px 9px; }
+      .last-updated { font-size: 0.82rem; }
+    }
+    @media (max-width: 360px) {
+      h1 { font-size: 1.15rem; }
     }
   </style>
 </head>
@@ -211,8 +369,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
   <main id="dashboard-root">
     <header>
       <div>
-        <h1>Local Model Gateway</h1>
-        <p>Runtime residency and GPU queue status.</p>
+        <h1>Local Model Gateway Dashboard</h1>
       </div>
       <div class="controls">
         <span class="last-updated" id="last-updated">Not updated yet</span>
@@ -232,25 +389,58 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
 
     <section class="summary" id="summary"></section>
 
-    <section class="telemetry-strip" id="telemetry-strip"></section>
+    <nav class="tabs" role="tablist" aria-label="Dashboard views">
+      <a class="tab active" id="tab-link-overview" href="#overview" data-tab="overview" role="tab" aria-selected="true">Overview</a>
+      <a class="tab" id="tab-link-runtimes" href="#runtimes" data-tab="runtimes" role="tab" aria-selected="false">Runtimes</a>
+      <a class="tab" id="tab-link-queue" href="#queue" data-tab="queue" role="tab" aria-selected="false">Queue</a>
+      <a class="tab" id="tab-link-history" href="#history" data-tab="history" role="tab" aria-selected="false">History</a>
+    </nav>
 
-    <section class="panel" style="margin-bottom: 16px;">
-      <h2>Managed Runtimes</h2>
-      <div class="runtime-grid" id="runtimes"></div>
-    </section>
-
-    <section class="grid">
+    <section class="tab-panel active" id="tab-overview" data-tab-panel="overview" role="tabpanel" aria-labelledby="tab-link-overview">
+      <section class="telemetry-strip" id="telemetry-strip"></section>
       <section class="panel">
         <h2>Active Work</h2>
         <div id="active-work"></div>
       </section>
+    </section>
+
+    <section class="tab-panel" id="tab-runtimes" data-tab-panel="runtimes" role="tabpanel" aria-labelledby="tab-link-runtimes">
       <section class="panel">
-        <h2>GPU Queue</h2>
-        <div id="gpu-queue"></div>
+        <h2>Managed Runtimes</h2>
+        <div class="runtime-grid" id="runtimes"></div>
       </section>
-      <section class="panel">
-        <h2>Recent Work</h2>
-        <div id="recent-work"></div>
+    </section>
+
+    <section class="tab-panel" id="tab-queue" data-tab-panel="queue" role="tabpanel" aria-labelledby="tab-link-queue">
+      <section class="grid">
+        <section class="panel">
+          <h2>Active Work</h2>
+          <div id="queue-active-work"></div>
+        </section>
+        <section class="panel">
+          <h2>GPU Queue</h2>
+          <div id="gpu-queue"></div>
+        </section>
+      </section>
+    </section>
+
+    <section class="tab-panel" id="tab-history" data-tab-panel="history" role="tabpanel" aria-labelledby="tab-link-history">
+      <section class="tab-stack">
+        <section class="panel">
+          <h2>Runtime Timeline</h2>
+          <div id="runtime-timeline" class="timeline"></div>
+        </section>
+        <section class="panel">
+          <h2>Recent Work</h2>
+          <div class="filter-row">
+            <select id="recent-runtime-filter" aria-label="Filter recent work by runtime"><option value="">All runtimes</option></select>
+            <select id="recent-state-filter" aria-label="Filter recent work by state"><option value="">All states</option></select>
+            <select id="recent-source-filter" aria-label="Filter recent work by source"><option value="">All sources</option></select>
+            <select id="recent-adapter-filter" aria-label="Filter recent work by adapter"><option value="">All adapters</option></select>
+            <input id="recent-search" type="search" autocomplete="off" placeholder="Search id, job, error">
+          </div>
+          <div id="recent-work"></div>
+        </section>
       </section>
     </section>
   </main>
@@ -265,6 +455,14 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     const errorBanner = document.getElementById('error-banner');
     const lastUpdated = document.getElementById('last-updated');
     const toggle = document.getElementById('toggle-polling');
+    const recentRuntimeFilter = document.getElementById('recent-runtime-filter');
+    const recentStateFilter = document.getElementById('recent-state-filter');
+    const recentSourceFilter = document.getElementById('recent-source-filter');
+    const recentAdapterFilter = document.getElementById('recent-adapter-filter');
+    const recentSearch = document.getElementById('recent-search');
+    const tabLinks = Array.from(document.querySelectorAll('[data-tab]'));
+    const tabPanels = Array.from(document.querySelectorAll('[data-tab-panel]'));
+    const tabIds = tabLinks.map((link) => link.dataset.tab);
     let paused = false;
     let pollTimer = null;
     let liveTimer = null;
@@ -276,6 +474,25 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
     function text(value, fallback = '-') {
       if (value === undefined || value === null || value === '') return fallback;
       return String(value);
+    }
+
+    function normalizeTab(value) {
+      return tabIds.includes(value) ? value : 'overview';
+    }
+
+    function setActiveTab(tab, updateHash = false) {
+      const activeTab = normalizeTab(tab);
+      tabLinks.forEach((link) => {
+        const active = link.dataset.tab === activeTab;
+        link.classList.toggle('active', active);
+        link.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      tabPanels.forEach((panel) => {
+        panel.classList.toggle('active', panel.dataset.tabPanel === activeTab);
+      });
+      if (updateHash && window.location.hash !== '#' + activeTab) {
+        history.pushState(null, '', '#' + activeTab);
+      }
     }
 
     function escapeHtml(value) {
@@ -364,6 +581,49 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       return Array.isArray(status.recent_work) ? status.recent_work : [];
     }
 
+    function timelineItems(status) {
+      return Array.isArray(status.runtime_timeline) ? status.runtime_timeline : [];
+    }
+
+    function uniqueValues(rows, key) {
+      return Array.from(new Set(rows.map((row) => row[key]).filter((value) => value !== undefined && value !== null && value !== ''))).sort();
+    }
+
+    function syncSelectOptions(select, values, fallbackLabel) {
+      const current = select.value;
+      select.innerHTML = '<option value="">' + escapeHtml(fallbackLabel) + '</option>'
+        + values.map((value) => '<option value="' + escapeHtml(value) + '">' + escapeHtml(phaseValue(value)) + '</option>').join('');
+      select.value = values.includes(current) ? current : '';
+    }
+
+    function syncRecentFilters(rows) {
+      syncSelectOptions(recentRuntimeFilter, uniqueValues(rows, 'runtimeAlias'), 'All runtimes');
+      syncSelectOptions(recentStateFilter, uniqueValues(rows, 'state'), 'All states');
+      syncSelectOptions(recentSourceFilter, uniqueValues(rows, 'source'), 'All sources');
+      syncSelectOptions(recentAdapterFilter, uniqueValues(rows, 'runtimeAdapter'), 'All adapters');
+    }
+
+    function filteredRecentItems(status) {
+      const query = recentSearch.value.trim().toLowerCase();
+      return recentItems(status).filter((row) => {
+        if (recentRuntimeFilter.value && row.runtimeAlias !== recentRuntimeFilter.value) return false;
+        if (recentStateFilter.value && row.state !== recentStateFilter.value) return false;
+        if (recentSourceFilter.value && row.source !== recentSourceFilter.value) return false;
+        if (recentAdapterFilter.value && row.runtimeAdapter !== recentAdapterFilter.value) return false;
+        if (!query) return true;
+        return [
+          row.id,
+          row.publicJobId,
+          row.runtimeAlias,
+          row.runtimeAdapter,
+          row.runtimeMode,
+          row.state,
+          row.failureCategory,
+          row.errorText,
+        ].some((value) => text(value, '').toLowerCase().includes(query));
+      });
+    }
+
     function telemetryTotals(status) {
       const active = activeItems(status);
       const loadingRuntime = Array.isArray(status.managed_runtimes)
@@ -421,7 +681,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
           + progressBar(loading ? loading.loadProgress : 0, loading ? 'loading' : '')
           + '<p>' + escapeHtml(loading ? ((loading.loadPhase || 'loading') + ' · ' + fmtMs(loading.loadElapsedMs) + (loading.loadProgressSource === 'progress_file' ? ' · actual progress' : ' · no runtime progress signal')) : 'Loaded runtimes stay visible below.') + '</p></article>',
         '<article class="telemetry-card"><div class="label">Inference prefill</div><strong>' + escapeHtml(prefillActual ? fmtPercent(totals.prefillProgress) + ' prefill' : totals.waitingForFirstByte + ' waiting for first byte') + '</strong>'
-          + progressBar(prefillActual ? totals.prefillProgress : totals.waitingForFirstByte ? null : 0, totals.waitingForFirstByte && !prefillActual ? 'loading' : 'queued')
+          + progressBar(prefillActual ? totals.prefillProgress : totals.waitingForFirstByte ? null : 0, totals.waitingForFirstByte && !prefillActual ? 'loading' : prefillActual ? 'loading' : 'queued')
           + '<p>' + escapeHtml(prefillSub) + '</p></article>',
         '<article class="telemetry-card"><div class="label">Transfer</div><strong>' + escapeHtml(fmtBps(totals.bandwidthBps)) + '</strong>'
           + '<p>TX ' + escapeHtml(fmtBytes(totals.requestBytes)) + ' · RX ' + escapeHtml(fmtBytes(totals.responseBytes)) + '</p></article>',
@@ -468,7 +728,7 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       root.innerHTML = '<table><thead><tr>' + columns.map((column) => '<th>' + escapeHtml(column.label) + '</th>').join('') + '</tr></thead><tbody>'
         + rows.map((row) => '<tr>' + columns.map((column) => {
           const value = column.format ? column.format(row[column.key], row) : row[column.key];
-          const compact = ['model', 'runtimeAlias', 'runtimeAdapter', 'runtimeMode', 'upstreamName', 'publicJobId', 'errorText'].includes(column.key);
+          const compact = ['model', 'runtimeAlias', 'runtimeAdapter', 'runtimeMode', 'upstreamName', 'publicJobId', 'errorText', 'timing', 'transfer'].includes(column.key);
           const cls = column.key === 'id' ? ' class="id"' : compact ? ' class="compact"' : '';
           const title = column.key === 'id' || compact ? ' title="' + escapeHtml(value) + '"' : '';
           return '<td' + cls + title + '>' + escapeHtml(value) + '</td>';
@@ -480,25 +740,120 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       return text(value).replace(/_/g, ' ');
     }
 
+    function fmtTiming(_value, row) {
+      return 'age ' + fmtMs(row.ageMs) + ' · active ' + fmtMs(row.activeDurationMs);
+    }
+
+    function fmtTransfer(_value, row) {
+      return 'TX ' + fmtBytes(row.requestBytes) + ' · RX ' + fmtBytes(row.responseBytes) + ' · ' + fmtBps(row.bandwidthBps);
+    }
+
+    function workField(label, value, className = '') {
+      return '<div class="work-field ' + escapeHtml(className) + '"><span>' + escapeHtml(label) + '</span><strong title="' + escapeHtml(value) + '">' + escapeHtml(value) + '</strong></div>';
+    }
+
+    function renderActiveWork(rootId, rows) {
+      const root = document.getElementById(rootId);
+      if (!root) return;
+      if (!Array.isArray(rows) || rows.length === 0) {
+        root.innerHTML = '<div class="empty">No active GPU work.</div>';
+        return;
+      }
+      root.innerHTML = '<div class="work-list">' + rows.map((row) => {
+        const subtitle = [
+          row.source,
+          row.runtimeAlias,
+          phaseValue(row.runtimeAdapter),
+          phaseValue(row.runtimeMode),
+        ].filter(Boolean).map((item) => escapeHtml(item)).join(' · ');
+        return '<article class="work-card">'
+          + '<div class="work-card-head">'
+          + '<div class="work-title"><strong title="' + escapeHtml(row.id) + '">' + escapeHtml(row.id) + '</strong><span>' + subtitle + '</span></div>'
+          + '<span class="pill ' + stateClass(row.phase || row.state) + '">' + escapeHtml(phaseValue(row.phase || row.state)) + '</span>'
+          + '</div>'
+          + '<div class="work-fields">'
+          + workField('priority', row.priority)
+          + workField('timing', fmtTiming(null, row))
+          + workField('prefill', fmtPercent(row.prefillProgress))
+          + workField('first byte', fmtMs(row.timeToFirstByteMs))
+          + workField('transfer', fmtTransfer(null, row), 'wide')
+          + workField('upstream', text(row.upstreamName))
+          + workField('job', text(row.publicJobId))
+          + '</div>'
+          + '</article>';
+      }).join('') + '</div>';
+    }
+
+    function renderTimeline(status) {
+      const root = document.getElementById('runtime-timeline');
+      const rows = timelineItems(status);
+      if (!rows.length) {
+        root.innerHTML = '<div class="empty">No runtime timeline events yet.</div>';
+        return;
+      }
+      root.innerHTML = rows.map((row) => {
+        const metadata = row.metadataJson ? safeJson(row.metadataJson) : null;
+        const metaParts = [
+          row.runtimeAlias,
+          row.workItemId,
+          row.source,
+          row.state,
+        ].filter(Boolean).map((item) => escapeHtml(item));
+        return '<article class="timeline-event">'
+          + '<div class="timeline-time">' + escapeHtml(new Date(row.createdAt).toLocaleTimeString()) + '</div>'
+          + '<div class="timeline-message">'
+          + '<span class="pill ' + stateClass(row.eventType) + '">' + escapeHtml(phaseValue(row.eventType)) + '</span> '
+          + escapeHtml(row.message)
+          + (metaParts.length ? '<div class="timeline-meta">' + metaParts.join(' · ') + '</div>' : '')
+          + (metadata ? '<details><summary>details</summary><pre>' + escapeHtml(JSON.stringify(metadata, null, 2)) + '</pre></details>' : '')
+          + '</div>'
+          + '</article>';
+      }).join('');
+    }
+
+    function safeJson(value) {
+      try {
+        const parsed = JSON.parse(value);
+        if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) return null;
+        return parsed;
+      } catch {
+        return null;
+      }
+    }
+
+    function renderRecentWork(status) {
+      const rows = filteredRecentItems(status);
+      const root = document.getElementById('recent-work');
+      if (!rows.length) {
+        root.innerHTML = '<div class="empty">No matching completed GPU work.</div>';
+        return;
+      }
+      root.innerHTML = '<table><thead><tr>'
+        + ['id', 'source', 'runtime', 'adapter', 'mode', 'state', 'failure', 'duration', 'age', 'job', 'error'].map((label) => '<th>' + label + '</th>').join('')
+        + '</tr></thead><tbody>'
+        + rows.map((row) => {
+          const error = text(row.errorText, '');
+          const failure = row.failureCategory ? phaseValue(row.failureCategory) : '-';
+          return '<tr>'
+            + '<td class="id" title="' + escapeHtml(row.id) + '">' + escapeHtml(row.id) + '</td>'
+            + '<td>' + escapeHtml(row.source) + '</td>'
+            + '<td class="compact" title="' + escapeHtml(row.runtimeAlias) + '">' + escapeHtml(row.runtimeAlias) + '</td>'
+            + '<td class="compact" title="' + escapeHtml(row.runtimeAdapter) + '">' + escapeHtml(phaseValue(row.runtimeAdapter)) + '</td>'
+            + '<td class="compact" title="' + escapeHtml(row.runtimeMode) + '">' + escapeHtml(phaseValue(row.runtimeMode)) + '</td>'
+            + '<td><span class="pill ' + stateClass(row.state) + '">' + escapeHtml(phaseValue(row.state)) + '</span></td>'
+            + '<td>' + escapeHtml(failure) + '</td>'
+            + '<td>' + escapeHtml(fmtMs(row.activeDurationMs)) + '</td>'
+            + '<td>' + escapeHtml(fmtMs(row.ageMs)) + '</td>'
+            + '<td class="compact" title="' + escapeHtml(row.publicJobId) + '">' + escapeHtml(row.publicJobId) + '</td>'
+            + '<td class="compact" title="' + escapeHtml(error) + '">' + (error ? '<details><summary>error</summary><pre>' + escapeHtml(error) + '</pre></details>' : '-') + '</td>'
+            + '</tr>';
+        }).join('')
+        + '</tbody></table>';
+    }
+
     function renderWork(status) {
-      renderTable('active-work', status.active_work, [
-        { key: 'id', label: 'id' },
-        { key: 'source', label: 'source' },
-        { key: 'runtimeAlias', label: 'runtime' },
-        { key: 'runtimeAdapter', label: 'adapter', format: phaseValue },
-        { key: 'runtimeMode', label: 'mode', format: phaseValue },
-        { key: 'phase', label: 'phase', format: phaseValue },
-        { key: 'priority', label: 'priority' },
-        { key: 'ageMs', label: 'age', format: fmtMs },
-        { key: 'activeDurationMs', label: 'active', format: fmtMs },
-        { key: 'prefillProgress', label: 'prefill', format: fmtPercent },
-        { key: 'timeToFirstByteMs', label: 'first byte', format: fmtMs },
-        { key: 'requestBytes', label: 'tx', format: fmtBytes },
-        { key: 'responseBytes', label: 'rx', format: fmtBytes },
-        { key: 'bandwidthBps', label: 'rate', format: fmtBps },
-        { key: 'upstreamName', label: 'upstream' },
-        { key: 'publicJobId', label: 'job' },
-      ], 'No active GPU work.');
+      renderActiveWork('active-work', status.active_work);
+      renderActiveWork('queue-active-work', status.active_work);
       renderTable('gpu-queue', queuedItems(status), [
         { key: 'id', label: 'id' },
         { key: 'source', label: 'source' },
@@ -510,24 +865,15 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
         { key: 'ageMs', label: 'age', format: fmtMs },
         { key: 'publicJobId', label: 'job' },
       ], 'No queued GPU work.');
-      renderTable('recent-work', recentItems(status), [
-        { key: 'id', label: 'id' },
-        { key: 'source', label: 'source' },
-        { key: 'runtimeAlias', label: 'runtime' },
-        { key: 'runtimeAdapter', label: 'adapter', format: phaseValue },
-        { key: 'runtimeMode', label: 'mode', format: phaseValue },
-        { key: 'state', label: 'state', format: phaseValue },
-        { key: 'activeDurationMs', label: 'duration', format: fmtMs },
-        { key: 'ageMs', label: 'age', format: fmtMs },
-        { key: 'publicJobId', label: 'job' },
-        { key: 'errorText', label: 'error' },
-      ], 'No completed GPU work yet.');
+      syncRecentFilters(recentItems(status));
+      renderRecentWork(status);
     }
 
     function renderStatus(status) {
       renderSummary(status);
       renderTelemetry(status);
       renderRuntimes(status.managed_runtimes);
+      renderTimeline(status);
       renderWork(status);
       updateLastUpdated();
     }
@@ -557,7 +903,8 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       const token = sessionStorage.getItem('local-model-gateway-token') || '';
       if (token) headers.Authorization = 'Bearer ' + token;
       try {
-        const response = await fetch(STATUS_PATH, { cache: 'no-store', headers });
+        const separator = STATUS_PATH.includes('?') ? '&' : '?';
+        const response = await fetch(STATUS_PATH + separator + 'recent_limit=50&timeline_limit=100', { cache: 'no-store', headers });
         if (seq !== requestSeq) return;
         if (response.status === 401) {
           tokenPanel.classList.add('visible');
@@ -595,11 +942,29 @@ export function dashboardHtml(options: DashboardHtmlOptions): string {
       sessionStorage.setItem('local-model-gateway-token', tokenInput.value.trim());
       void refreshStatus();
     });
+    [recentRuntimeFilter, recentStateFilter, recentSourceFilter, recentAdapterFilter, recentSearch].forEach((control) => {
+      control.addEventListener('input', () => {
+        if (lastStatus) renderWork(lastStatus);
+      });
+      control.addEventListener('change', () => {
+        if (lastStatus) renderWork(lastStatus);
+      });
+    });
+    tabLinks.forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        setActiveTab(link.dataset.tab, true);
+      });
+    });
+    window.addEventListener('hashchange', () => {
+      setActiveTab(normalizeTab(window.location.hash.slice(1)));
+    });
     toggle.addEventListener('click', () => {
       paused = !paused;
       toggle.textContent = paused ? 'Resume' : 'Pause';
       if (!paused) void refreshStatus();
     });
+    setActiveTab(normalizeTab(window.location.hash.slice(1)));
     void refreshStatus();
     schedule();
   </script>
