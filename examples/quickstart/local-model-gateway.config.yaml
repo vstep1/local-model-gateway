@@ -1,0 +1,51 @@
+server:
+  host: 127.0.0.1
+  port: 8787
+
+paths:
+  data_dir: ../../data/quickstart
+  db_path: ../../data/quickstart/gateway.sqlite
+  models_dir: ../../models
+  model_source_dir: ../../runtime/model-source
+  llama_cli: llama-cli
+  base_model_path: ../../runtime/base.gguf
+
+default_model: quickstart-mock
+startup_models: {}
+
+queue:
+  max_queue: 100
+  max_queue_wait_ms: 300000
+  history_ttl_days: 7
+
+generation:
+  ctx_size: 4096
+  max_tokens: 360
+  temperature: 0.8
+  top_p: 0.95
+  repeat_penalty: 1.0
+  gpu_layers: all
+
+allow_unmanaged_local_upstreams: false
+
+runtimes:
+  quickstart-mock:
+    enabled: true
+    base_url: http://127.0.0.1:18080/v1
+    health_url: http://127.0.0.1:18080/v1/models
+    service_script: ./mock-runtime-service.mjs
+    load_progress_path: ../../runtime/quickstart/load-progress.json
+    start_args: [start]
+    stop_args: [stop]
+    idle_ttl_ms: 60000
+    load_timeout_ms: 10000
+    stop_timeout_ms: 10000
+    max_concurrency: 2
+    upstream_model: quickstart-mock
+    context_window: 4096
+    recommended_prompt_budget: 3072
+    supports_streaming: true
+    supports_reasoning: false
+    context_notes: Local no-GPU smoke-test runtime used by the source quickstart.
+
+openai_upstreams: []

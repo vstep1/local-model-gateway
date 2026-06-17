@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { FastMCP } from 'fastmcp';
 import {
   CONFIG_KEYS,
@@ -17,6 +18,25 @@ import { Scheduler } from '@local-model-gateway/core';
 import { registerTools } from './tools/index.js';
 import type { ActiveRuntimeSettings, GatewayConfig } from '@local-model-gateway/core';
 import { registerDashboardRoute } from './dashboard.js';
+
+type Semver = `${number}.${number}.${number}`;
+
+function readGatewayVersion(): Semver {
+  for (const relativePath of ['../../package.json', '../package.json']) {
+    try {
+      const raw = readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+      const parsed = JSON.parse(raw) as { version?: unknown };
+      if (typeof parsed.version === 'string' && /^\d+\.\d+\.\d+$/.test(parsed.version)) {
+        return parsed.version as Semver;
+      }
+    } catch {
+      // Source and built files have different relative locations.
+    }
+  }
+  return '0.0.0';
+}
+
+const GATEWAY_VERSION = readGatewayVersion();
 
 function applyRuntimeSettings(
   envConfig: GatewayConfig,
@@ -112,7 +132,7 @@ export function discoveryManifest(
 
   return redactForStatus({
     name: 'local-model-gateway',
-    version: '0.3.0',
+    version: GATEWAY_VERSION,
     openai_base_url: urls.openai,
     mcp_url: urls.mcp,
     status_url: urls.status,
@@ -201,7 +221,7 @@ export async function startGateway(): Promise<void> {
     instructions:
       'Local Model Gateway MCP server with shared local GPU runtime scheduling and OpenAI-compatible endpoints.',
     name: 'local-model-gateway',
-    version: '0.3.0',
+    version: GATEWAY_VERSION,
   });
 
   registerTools(server, scheduler, store, registry, config, gpuCoordinator);

@@ -4,6 +4,18 @@ Runtime adapters are the bridge between the gateway coordinator and a concrete
 local model server. The gateway does not need to know how your machine starts a
 model; it only needs a script with a small command contract.
 
+## Support Status
+
+| Adapter shape | Status | Use it for |
+| --- | --- | --- |
+| macOS launchd | Supported example path | Local Apple Silicon workstations using `llama-server`. |
+| Generic shell script | Supported contract | Custom local runtimes that can implement `start` and `stop`. |
+| Linux systemd | Reference-only template | Designing a Linux deployment after adding host-specific users, paths, GPU access, and hardening. |
+| Docker Compose | Reference-only template | Understanding the service split before building a host-specific container deployment. |
+
+Reference-only templates are not CI-tested install paths. Treat them as
+architecture sketches, not production-ready service definitions.
+
 ## Adapter Contract
 
 Each managed runtime config points at:
@@ -36,26 +48,28 @@ through a per-user LaunchAgent:
 This is the first supported adapter shape because it matches local Apple Silicon
 workstation use.
 
-## Linux systemd
+## Linux systemd Reference Templates
 
-The systemd examples are stubs for Linux hosts:
+The systemd files are reference-only templates for Linux hosts:
 
 - [systemd README](../examples/runtime-adapters/linux/systemd/README.md)
 - [gateway unit template](../examples/runtime-adapters/linux/systemd/local-model-gateway.service.template)
 - [runtime unit template](../examples/runtime-adapters/linux/systemd/llama-runtime.service.template)
 
 They show the service shape but still need host-specific GPU, user, directory,
-and security hardening before production use.
+and security hardening before production use. They are not a supported
+one-command Linux installer.
 
-## Docker
+## Docker Reference Template
 
-The Docker Compose stub is a deployment shape reference:
+The Docker Compose files are reference-only deployment templates:
 
 - [Docker README](../examples/runtime-adapters/docker/README.md)
 - [Compose stub](../examples/runtime-adapters/docker/compose.stub.yaml)
 
 Container GPU access is host-specific, so Docker is documented as an extension
-target rather than the default quick start.
+target rather than the default quick start. The compose file is not a tested
+production deployment.
 
 ## Practical Guidance
 

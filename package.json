@@ -16,10 +16,11 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run build && npm run typecheck --workspaces --if-present",
     "test": "npm run build && npm run test --workspaces --if-present",
+    "coverage": "tsx --test --experimental-test-coverage '--test-coverage-include=packages/*/src/**/*.ts' '--test-coverage-exclude=packages/*/src/index.ts' '--test-coverage-exclude=packages/cli/src/service.ts' '--test-coverage-exclude=packages/*/dist/**' --test-coverage-lines=85 --test-coverage-branches=74 --test-coverage-functions=82 packages/*/tests/**/*.test.ts",
     "audit:ci": "npm audit --audit-level=moderate",
     "scan:public": "node scripts/scan-public-safety.mjs",
     "pack:dry-run": "npm pack --workspaces --dry-run",
-    "ci": "npm run typecheck && npm test && npm run audit:ci && npm run scan:public && npm run pack:dry-run"
+    "ci": "npm run typecheck && npm test && npm run coverage && npm run audit:ci && npm run scan:public && npm run pack:dry-run"
   },
   "devDependencies": {
     "@types/node": "^22.14.1",

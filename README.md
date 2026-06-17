@@ -86,7 +86,7 @@ multiple local agents and LLM apps at the same time.
 | Runtime residency | Starts, health-checks, unloads, and swaps managed local runtimes on demand. |
 | Stop command cancellation | Exact user commands like `stop` or `cancel generation` cancel matching in-flight OpenAI work instead of starting another GPU request. |
 | Browser dashboard | Read-only `/dashboard` view for loaded models, runtime history, load progress, prefill, bandwidth, active work, queued requests, and recent completed work. |
-| Launch adapters | macOS launchd and generic shell helpers now, with systemd/Docker planned. |
+| Launch adapters | macOS launchd and generic shell helpers now; Linux systemd and Docker are reference-only templates. |
 | Lazy MCP broker | Keeps downstream MCP catalogs out of the prompt until a tool is actually searched or described. |
 | Discovery manifest | `/.well-known/local-model-gateway.json` for clients that want model, timeout, and endpoint hints. |
 
@@ -118,8 +118,9 @@ Current status:
   npm.
 - Fresh configs are safe by default: heavyweight runtime presets are generated
   disabled until you wire them to working local service scripts.
-- Linux systemd and Docker examples exist as stubs, but they are not the primary
-  tested path yet.
+- Linux systemd and Docker examples are reference-only templates. They are not
+  tested install paths and should not be treated as production-ready service
+  definitions.
 
 Source install:
 
@@ -130,7 +131,49 @@ npm install
 npm run build
 ```
 
-Create a local config and run the first diagnostic:
+Run the bundled end-to-end quickstart first. It uses a tiny local
+OpenAI-compatible mock runtime, so it does not require a GPU, model download, or
+llama.cpp. The gateway still starts it through the managed-runtime lifecycle,
+queues the request, proxies to `/v1/chat/completions`, and records runtime
+history. If another gateway is already listening on `127.0.0.1:8787`, stop it
+before running this smoke test.
+
+Terminal 1:
+
+```bash
+LOCAL_MODEL_GATEWAY_CONFIG=examples/quickstart/local-model-gateway.config.yaml \
+  npx local-model-gateway doctor
+
+LOCAL_MODEL_GATEWAY_CONFIG=examples/quickstart/local-model-gateway.config.yaml \
+  npx local-model-gateway start
+```
+
+Terminal 2:
+
+```bash
+curl http://127.0.0.1:8787/health
+curl http://127.0.0.1:8787/v1/models
+
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "quickstart-mock",
+    "messages": [
+      { "role": "user", "content": "Confirm the gateway quickstart works." }
+    ]
+  }'
+
+curl 'http://127.0.0.1:8787/status?recent_limit=5&timeline_limit=10'
+open http://127.0.0.1:8787/dashboard
+```
+
+When done, press `Ctrl+C` in Terminal 1 and stop the mock runtime:
+
+```bash
+node examples/quickstart/mock-runtime-service.mjs stop
+```
+
+After the smoke test, create a normal local config and run the first diagnostic:
 
 ```bash
 npx local-model-gateway init
@@ -141,11 +184,12 @@ npx local-model-gateway doctor --fix-plan
 
 Agent-led installs should read [AGENTS.md](AGENTS.md) and the
 [agent install runbook](docs/agent-install.md) before changing ports, services,
-or runtime config. `doctor --json` is the machine-readable preflight surface;
+or runtime config. See the [CLI reference](docs/cli-reference.md) for every
+command and flag. `doctor --json` is the machine-readable preflight surface;
 `doctor --fix-plan` prints read-only remediation steps and never mutates the
 machine.
 
-Start the gateway:
+Start the gateway with your normal local config:
 
 ```bash
 npx local-model-gateway start
@@ -251,8 +295,8 @@ See [Runtime Config](docs/runtime-config.md) and
 Runtime adapter examples:
 
 - [macOS launchd](examples/runtime-adapters/macos/README.md)
-- [Linux systemd stub](examples/runtime-adapters/linux/systemd/README.md)
-- [Docker Compose stub](examples/runtime-adapters/docker/README.md)
+- [Linux systemd reference templates](examples/runtime-adapters/linux/systemd/README.md)
+- [Docker Compose reference template](examples/runtime-adapters/docker/README.md)
 
 ## Lazy MCP Broker
 
@@ -345,7 +389,7 @@ Near-term:
 Later:
 
 - runtime auto-detection recipes for common local model servers
-- Linux systemd and Docker runtime adapters beyond the current stubs
+- first-class, tested Linux systemd and Docker runtime adapters
 - stronger broker policies for metered/write tools with confirmations
 - portable service installer templates beyond launchd
 

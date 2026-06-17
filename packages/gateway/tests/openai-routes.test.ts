@@ -221,6 +221,74 @@ describe('openai-compatible routes', () => {
     }
   });
 
+  it('handles Responses API non-stream and stream responses', async () => {
+    const harness = await createOpenAiApp();
+    try {
+      const nonStream = await harness.app.request('/v1/responses', {
+        body: JSON.stringify({
+          input: 'Write one sentence.',
+          instructions: 'Be concise.',
+          model: 'ep2',
+          stream: false,
+        }),
+        headers: {
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      });
+
+      assert.equal(nonStream.status, 200);
+      const nonStreamBody = await nonStream.json();
+      assert.equal(nonStreamBody.object, 'response');
+      assert.equal(nonStreamBody.output[0].role, 'assistant');
+      assert.match(nonStreamBody.output[0].content[0].text, /SYSTEM:\nBe concise/);
+
+      const stream = await harness.app.request('/v1/responses', {
+        body: JSON.stringify({
+          input: [{ role: 'user', content: 'Stream a sentence.' }],
+          model: 'ep2',
+          stream: true,
+        }),
+        headers: {
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      });
+
+      assert.equal(stream.status, 200);
+      assert.equal(stream.headers.get('content-type'), 'text/event-stream');
+      const text = await stream.text();
+      assert.match(text, /response\.output_text\.delta/);
+      assert.match(text, /response\.completed/);
+      assert.match(text, /\[DONE\]/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it('returns OpenAI-style validation errors for invalid request bodies', async () => {
+    const harness = await createOpenAiApp();
+    try {
+      const chat = await harness.app.request('/v1/chat/completions', {
+        body: JSON.stringify({ messages: [] }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+      assert.equal(chat.status, 400);
+      assert.equal((await chat.json()).error.type, 'invalid_request_error');
+
+      const responses = await harness.app.request('/v1/responses', {
+        body: '{not-json',
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+      assert.equal(responses.status, 400);
+      assert.equal((await responses.json()).error.type, 'invalid_request_error');
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it('times out queued jobs for chat completions and returns OpenAI-style error', async () => {
     const harness = await createOpenAiApp();
     try {

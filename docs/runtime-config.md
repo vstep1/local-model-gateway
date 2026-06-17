@@ -45,5 +45,6 @@ LoRA adapters that should be imported at startup can be listed under
 config leaves this empty so a clean install starts without workstation-specific
 model files.
 
-Runtime adapter examples live in [Runtime Adapters](runtime-adapters.md),
-including a macOS launchd script and Linux systemd/Docker stubs.
+Runtime adapter examples live in [Runtime Adapters](runtime-adapters.md).
+The macOS launchd example is the supported workstation path; Linux systemd and
+Docker files are reference-only templates that require host-specific hardening.

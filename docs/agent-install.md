@@ -61,6 +61,8 @@ Use the outputs this way:
 - `doctor --json`: machine-readable status for agents.
 - `doctor --fix-plan`: ordered remediation steps for the user or agent to review.
 
+See [CLI Reference](cli-reference.md) for every command and flag.
+
 The JSON output has a top-level `status` of `ok`, `warn`, or `fail`. Agents
 should treat `fail` as a blocker.
 

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import {
   GatewayStore,
@@ -90,6 +91,8 @@ describe('discovery manifest', () => {
     assert.equal(manifest.openai_base_url, 'http://127.0.0.1:8787/v1');
     assert.equal(manifest.mcp_url, 'http://127.0.0.1:8787/mcp');
     assert.equal(manifest.dashboard_url, 'http://127.0.0.1:8787/dashboard');
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
+    assert.equal(manifest.version, packageJson.version);
     const models = manifest.models as Array<Record<string, unknown>>;
     assert.equal(models.some((model) => model.id === 'qwen3-32b'), true);
     assert.equal(models.find((model) => model.id === 'qwen3-32b')?.recommended_prompt_budget, 98304);

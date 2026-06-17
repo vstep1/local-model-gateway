@@ -29,6 +29,7 @@ logs/
 local-model-gateway.config.yaml
 local-model-gateway.config.yaml.pre-*
 !examples/local-model-gateway.config.yaml
+!examples/quickstart/local-model-gateway.config.yaml
 
 # OS/editor
 .DS_Store

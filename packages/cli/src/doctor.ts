@@ -554,24 +554,46 @@ export async function runDoctor(
       ok: Boolean(env.nodePath),
       whyItMatters: 'The gateway and CLI are Node.js packages.',
     },
-    {
-      fix: 'Install llama.cpp and make llama-cli available on PATH, or set paths.llama_cli.',
-      id: 'llama_cli_available',
-      name: 'llama-cli available',
-      ok: Boolean(env.llamaCliPath),
-      whyItMatters: 'Exclusive LoRA jobs use llama-cli.',
-    },
-    {
-      fix: 'Install llama.cpp and make llama-server available on PATH before enabling managed runtime presets.',
-      id: 'llama_server_available',
-      name: 'llama-server available',
-      ok: Boolean(env.llamaServerPath),
-      whyItMatters: 'Managed runtime examples use llama-server.',
-    },
   ];
 
   try {
     const config = resolveGatewayConfig({ rootDir: cwd });
+    const hasStartupModels = Object.keys(config.startupModels).length > 0;
+    const mayUseLlamaServer = config.managedRuntimes.some((runtime) => (
+      /llama|qwen|minimax/i.test([
+        runtime.alias,
+        runtime.serviceScript,
+        runtime.upstreamModel,
+      ].join(' '))
+    ));
+
+    checks.push({
+      evidence: {
+        path: env.llamaCliPath,
+        required: hasStartupModels,
+      },
+      fix: hasStartupModels
+        ? 'Install llama.cpp and make llama-cli available on PATH, or set paths.llama_cli.'
+        : 'Install llama.cpp before configuring startup_models or one-shot LoRA jobs.',
+      id: 'llama_cli_available',
+      name: 'llama-cli available when LoRA jobs need it',
+      ok: Boolean(env.llamaCliPath) || !hasStartupModels,
+      whyItMatters: 'Exclusive LoRA jobs use llama-cli, but managed runtimes and external upstreams do not require it.',
+    });
+    checks.push({
+      evidence: {
+        path: env.llamaServerPath,
+        runtime_count: config.managedRuntimes.length,
+      },
+      fix: mayUseLlamaServer
+        ? 'Install llama.cpp and make llama-server available on PATH before using llama-server-based runtime examples.'
+        : 'No action needed unless your service_script calls llama-server.',
+      id: 'llama_server_available',
+      name: 'llama-server available when runtime scripts need it',
+      ok: Boolean(env.llamaServerPath) || !mayUseLlamaServer,
+      status: !env.llamaServerPath && mayUseLlamaServer ? 'warn' : undefined,
+      whyItMatters: 'Some examples use llama-server, but custom managed runtime service scripts may use another OpenAI-compatible server.',
+    });
     checks.push({
       fix: 'No action needed.',
       id: 'config_file_parsed',

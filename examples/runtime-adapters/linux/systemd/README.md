@@ -1,6 +1,12 @@
-# Linux systemd Runtime Stub
+# Linux systemd Runtime Reference Templates
 
-The systemd files here are starting points, not a full installer.
+The systemd files here are reference-only templates, not a supported installer
+or production deployment. They are not exercised by CI and have not been
+hardened across distros, accelerators, user models, or sandbox policies.
+
+Use them to understand the service shape. Before running them on a real host,
+you must review and adapt users, paths, permissions, GPU device access,
+environment files, restart policy, network binding, and systemd hardening.
 
 The gateway needs two things:
 
@@ -34,8 +40,8 @@ sudo systemctl start local-model-runtime@qwen3-32b.service
 
 In `local-model-gateway.config.yaml`, point the runtime script at a shell wrapper
 that calls `systemctl start local-model-runtime@qwen3-32b.service` and `systemctl
-stop local-model-runtime@qwen3-32b.service`, or replace this stub with a first-class
-systemd adapter.
+stop local-model-runtime@qwen3-32b.service`, or replace this template with a
+first-class systemd adapter.
 
 This directory includes a basic wrapper for that contract:
 
@@ -51,4 +57,4 @@ chmod +x runtime-adapters/qwen3-32b-service.sh
 ```
 
 GPU access, users, paths, and sandboxing vary by distro and accelerator. Treat
-these templates as a portable shape, then harden for your host.
+these templates as a portable shape, then harden and test for your host.
