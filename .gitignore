@@ -8,6 +8,10 @@ build/
 out/
 lib/
 *.tsbuildinfo
+test-results/
+playwright-report/
+blob-report/
+screenshots/
 
 # Runtime state
 data/

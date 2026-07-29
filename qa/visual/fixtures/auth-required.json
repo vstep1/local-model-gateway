@@ -1,0 +1,6 @@
+{
+  "error": {
+    "message": "Missing or invalid bearer token",
+    "type": "authentication_error"
+  }
+}

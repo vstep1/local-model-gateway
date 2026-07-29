@@ -1,0 +1,123 @@
+{
+  "service": "local-model-gateway",
+  "loaded_model": "qwen3-32b-local",
+  "loading_model": null,
+  "uptime_seconds": 90211,
+  "managed_runtimes": [
+    {
+      "alias": "qwen3-32b-local",
+      "state": "loaded",
+      "enabled": true,
+      "activeRequests": 0,
+      "maxConcurrency": 1,
+      "queuedRequests": 0,
+      "loadPhase": "ready",
+      "loadProgress": 1,
+      "loadProgressSource": "progress_file",
+      "loadElapsedMs": 39044,
+      "lastUsedAt": "2026-06-19T08:34:12.000Z",
+      "upstreamModel": "qwen3-32b-q4-k-m",
+      "prefillProgress": null,
+      "prefillInputDone": null,
+      "prefillInputTotal": null
+    }
+  ],
+  "active_work": [],
+  "gpu_queue": [],
+  "recent_work": [
+    {
+      "id": "gpu-work-recent-001",
+      "source": "openai.chat.completions",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "succeeded",
+      "failureCategory": null,
+      "errorText": null,
+      "activeDurationMs": 4201,
+      "ageMs": 22000,
+      "publicJobId": "job_recent_001"
+    },
+    {
+      "id": "gpu-work-recent-002",
+      "source": "mcp.submit_job",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "succeeded",
+      "failureCategory": null,
+      "errorText": null,
+      "activeDurationMs": 8188,
+      "ageMs": 62000,
+      "publicJobId": "job_recent_002"
+    },
+    {
+      "id": "gpu-work-recent-003",
+      "source": "openai.responses",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "failed",
+      "failureCategory": "client_aborted",
+      "errorText": "Client disconnected while streaming. Request body and headers were not persisted.",
+      "activeDurationMs": 1710,
+      "ageMs": 125000,
+      "publicJobId": "job_recent_003"
+    },
+    {
+      "id": "gpu-work-recent-004",
+      "source": "mcp.wait_job",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "succeeded",
+      "failureCategory": null,
+      "errorText": null,
+      "activeDurationMs": 11003,
+      "ageMs": 188000,
+      "publicJobId": "job_recent_004"
+    }
+  ],
+  "runtime_timeline": [
+    {
+      "createdAt": "2026-06-19T08:30:00.000Z",
+      "eventType": "runtime_load_started",
+      "message": "Starting managed runtime.",
+      "runtimeAlias": "qwen3-32b-local",
+      "workItemId": null,
+      "source": "runtime-adapter",
+      "state": "loading",
+      "metadataJson": "{\"adapter\":\"launchd\"}"
+    },
+    {
+      "createdAt": "2026-06-19T08:30:39.000Z",
+      "eventType": "runtime_load_succeeded",
+      "message": "Runtime became healthy and available.",
+      "runtimeAlias": "qwen3-32b-local",
+      "workItemId": null,
+      "source": "runtime-adapter",
+      "state": "loaded",
+      "metadataJson": "{\"durationMs\":39044}"
+    },
+    {
+      "createdAt": "2026-06-19T08:32:01.000Z",
+      "eventType": "work_succeeded",
+      "message": "Completed queued work item.",
+      "runtimeAlias": "qwen3-32b-local",
+      "workItemId": "gpu-work-recent-001",
+      "source": "openai.chat.completions",
+      "state": "succeeded",
+      "metadataJson": "{\"tokens\":384}"
+    },
+    {
+      "createdAt": "2026-06-19T08:33:20.000Z",
+      "eventType": "work_failed",
+      "message": "Client disconnected while streaming.",
+      "runtimeAlias": "qwen3-32b-local",
+      "workItemId": "gpu-work-recent-003",
+      "source": "openai.responses",
+      "state": "failed",
+      "metadataJson": "{\"category\":\"client_aborted\",\"redacted\":true}"
+    }
+  ]
+}

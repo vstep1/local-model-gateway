@@ -1,0 +1,70 @@
+{
+  "service": "local-model-gateway",
+  "loaded_model": null,
+  "loading_model": null,
+  "uptime_seconds": 532,
+  "managed_runtimes": [
+    {
+      "alias": "minimax-m2.7-local",
+      "state": "failed",
+      "enabled": true,
+      "activeRequests": 0,
+      "maxConcurrency": 1,
+      "queuedRequests": 1,
+      "loadPhase": "health-check",
+      "loadProgress": 0,
+      "loadProgressSource": "not_exposed",
+      "loadElapsedMs": 10000,
+      "lastUsedAt": "2026-06-19T08:20:00.000Z",
+      "upstreamModel": "minimax-m2.7-q5-k-m",
+      "prefillProgress": null,
+      "prefillInputDone": null,
+      "prefillInputTotal": null,
+      "lastError": "Runtime health check failed after startup.",
+      "lastLoadError": "Managed runtime did not expose /v1/models before load_timeout_ms.",
+      "lastUpstreamError": "HTTP 503 from loopback upstream."
+    }
+  ],
+  "active_work": [],
+  "gpu_queue": [
+    {
+      "id": "gpu-work-blocked-001",
+      "source": "openai.responses",
+      "runtimeAlias": "minimax-m2.7-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "queued",
+      "phase": "waiting",
+      "priority": 0,
+      "ageMs": 42100,
+      "publicJobId": "job_blocked_on_failed_runtime"
+    }
+  ],
+  "recent_work": [
+    {
+      "id": "gpu-work-failed-20260619-082000",
+      "source": "openai.responses",
+      "runtimeAlias": "minimax-m2.7-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "failed",
+      "failureCategory": "runtime_unavailable",
+      "errorText": "Runtime health check failed. No prompt body, headers, or credentials were recorded.",
+      "activeDurationMs": 10000,
+      "ageMs": 144000,
+      "publicJobId": "job_failed_runtime_001"
+    }
+  ],
+  "runtime_timeline": [
+    {
+      "createdAt": "2026-06-19T08:20:00.000Z",
+      "eventType": "runtime_load_failed",
+      "message": "Managed runtime failed to become healthy before timeout.",
+      "runtimeAlias": "minimax-m2.7-local",
+      "workItemId": "gpu-work-failed-20260619-082000",
+      "source": "runtime-adapter",
+      "state": "failed",
+      "metadataJson": "{\"category\":\"runtime_unavailable\",\"redacted\":true}"
+    }
+  ]
+}

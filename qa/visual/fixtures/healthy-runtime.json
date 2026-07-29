@@ -1,0 +1,71 @@
+{
+  "service": "local-model-gateway",
+  "loaded_model": "qwen3-32b-local",
+  "loading_model": null,
+  "uptime_seconds": 15442,
+  "managed_runtimes": [
+    {
+      "alias": "qwen3-32b-local",
+      "state": "loaded",
+      "enabled": true,
+      "activeRequests": 0,
+      "maxConcurrency": 1,
+      "queuedRequests": 0,
+      "loadPhase": "ready",
+      "loadProgress": 1,
+      "loadProgressSource": "progress_file",
+      "loadElapsedMs": 38122,
+      "lastUsedAt": "2026-06-19T08:10:00.000Z",
+      "upstreamModel": "qwen3-32b-q4-k-m",
+      "prefillProgress": null,
+      "prefillInputDone": null,
+      "prefillInputTotal": null
+    },
+    {
+      "alias": "minimax-m2.7-local",
+      "state": "unloaded",
+      "enabled": true,
+      "activeRequests": 0,
+      "maxConcurrency": 1,
+      "queuedRequests": 0,
+      "loadPhase": "idle",
+      "loadProgress": 0,
+      "loadProgressSource": "not_exposed",
+      "loadElapsedMs": null,
+      "lastUsedAt": "2026-06-19T07:35:00.000Z",
+      "upstreamModel": "minimax-m2.7-q5-k-m",
+      "prefillProgress": null,
+      "prefillInputDone": null,
+      "prefillInputTotal": null
+    }
+  ],
+  "active_work": [],
+  "gpu_queue": [],
+  "recent_work": [
+    {
+      "id": "gpu-work-20260619-081002",
+      "source": "openai.chat.completions",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "succeeded",
+      "failureCategory": null,
+      "errorText": null,
+      "activeDurationMs": 4827,
+      "ageMs": 82000,
+      "publicJobId": "job_dashboard_smoke_001"
+    }
+  ],
+  "runtime_timeline": [
+    {
+      "createdAt": "2026-06-19T08:10:02.000Z",
+      "eventType": "work_succeeded",
+      "message": "Completed chat completion through managed runtime.",
+      "runtimeAlias": "qwen3-32b-local",
+      "workItemId": "gpu-work-20260619-081002",
+      "source": "openai.chat.completions",
+      "state": "succeeded",
+      "metadataJson": "{\"durationMs\":4827,\"tokens\":594}"
+    }
+  ]
+}

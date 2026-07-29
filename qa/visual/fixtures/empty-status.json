@@ -1,0 +1,11 @@
+{
+  "service": "local-model-gateway",
+  "loaded_model": null,
+  "loading_model": null,
+  "uptime_seconds": 184,
+  "managed_runtimes": [],
+  "active_work": [],
+  "gpu_queue": [],
+  "recent_work": [],
+  "runtime_timeline": []
+}

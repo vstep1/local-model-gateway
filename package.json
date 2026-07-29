@@ -17,12 +17,16 @@
     "typecheck": "npm run build && npm run typecheck --workspaces --if-present",
     "test": "npm run build && npm run test --workspaces --if-present",
     "coverage": "tsx --test --experimental-test-coverage '--test-coverage-include=packages/*/src/**/*.ts' '--test-coverage-exclude=packages/*/src/index.ts' '--test-coverage-exclude=packages/cli/src/service.ts' '--test-coverage-exclude=packages/*/dist/**' --test-coverage-lines=85 --test-coverage-branches=74 --test-coverage-functions=82 packages/*/tests/**/*.test.ts",
+    "qa:visual": "playwright test -c playwright.visual.config.ts",
+    "qa:visual:debug": "playwright test -c playwright.visual.config.ts --headed",
     "audit:ci": "npm audit --audit-level=moderate",
     "scan:public": "node scripts/scan-public-safety.mjs",
     "pack:dry-run": "npm pack --workspaces --dry-run",
     "ci": "npm run typecheck && npm test && npm run coverage && npm run audit:ci && npm run scan:public && npm run pack:dry-run"
   },
   "devDependencies": {
+    "@argos-ci/playwright": "^7.0.6",
+    "@playwright/test": "^1.61.0",
     "@types/node": "^22.14.1",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3"

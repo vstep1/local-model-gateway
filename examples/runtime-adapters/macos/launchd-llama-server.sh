@@ -41,6 +41,19 @@ write_key_string() {
 EOF
 }
 
+write_key_bool() {
+  local key="$1"
+  local value
+  case "$(printf '%s' "${2:-false}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) value="true" ;;
+    *) value="false" ;;
+  esac
+  cat <<EOF
+  <key>${key}</key>
+  <${value}/>
+EOF
+}
+
 RUNTIME_ALIAS="${RUNTIME_ALIAS:-${SERVICE_NAME%-service}}"
 RUNTIME_LABEL="${RUNTIME_LABEL:-ai.local.runtime.$(sanitize_label_part "${RUNTIME_ALIAS}")}"
 RUNTIME_HOST="${RUNTIME_HOST:-127.0.0.1}"
@@ -63,6 +76,8 @@ RUNTIME_STATE_DIR="${RUNTIME_STATE_DIR:-${HOME}/Library/Application Support/loca
 RUNTIME_PROGRESS_FILE="${RUNTIME_PROGRESS_FILE:-${RUNTIME_STATE_DIR}/load-progress.json}"
 RUNTIME_LOG_DIR="${RUNTIME_LOG_DIR:-${HOME}/Library/Logs/local-model-gateway/${RUNTIME_ALIAS}}"
 RUNTIME_PLIST_DIR="${RUNTIME_PLIST_DIR:-${HOME}/Library/LaunchAgents}"
+RUNTIME_RUN_AT_LOAD="${RUNTIME_RUN_AT_LOAD:-false}"
+RUNTIME_KEEP_ALIVE="${RUNTIME_KEEP_ALIVE:-false}"
 
 USER_UID="$(id -u)"
 DOMAIN_TARGET="gui/${USER_UID}"
@@ -262,10 +277,8 @@ $(write_key_string Label "${RUNTIME_LABEL}")
     <string>$(xml_escape "${WRAPPER_PATH}")</string>
   </array>
 $(write_key_string WorkingDirectory "${RUNTIME_WORKDIR}")
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <true/>
+$(write_key_bool RunAtLoad "${RUNTIME_RUN_AT_LOAD}")
+$(write_key_bool KeepAlive "${RUNTIME_KEEP_ALIVE}")
 $(write_key_string StandardOutPath "${STDOUT_LOG}")
 $(write_key_string StandardErrorPath "${STDERR_LOG}")
   <key>EnvironmentVariables</key>

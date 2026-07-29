@@ -1,0 +1,88 @@
+{
+  "service": "local-model-gateway",
+  "loaded_model": "qwen3-32b-local",
+  "loading_model": null,
+  "uptime_seconds": 24718,
+  "managed_runtimes": [
+    {
+      "alias": "qwen3-32b-local",
+      "state": "loaded",
+      "enabled": true,
+      "activeRequests": 1,
+      "maxConcurrency": 1,
+      "queuedRequests": 3,
+      "loadPhase": "ready",
+      "loadProgress": 1,
+      "loadProgressSource": "progress_file",
+      "loadElapsedMs": 39044,
+      "lastUsedAt": "2026-06-19T08:18:12.000Z",
+      "upstreamModel": "qwen3-32b-q4-k-m",
+      "prefillProgress": 0.78,
+      "prefillInputDone": 11700,
+      "prefillInputTotal": 15000
+    }
+  ],
+  "active_work": [
+    {
+      "id": "gpu-work-active-20260619-081812",
+      "source": "openai.chat.completions",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "running",
+      "phase": "prefill",
+      "priority": 0,
+      "ageMs": 32100,
+      "activeDurationMs": 29800,
+      "requestBytes": 270336,
+      "responseBytes": 8192,
+      "bandwidthBps": 14500,
+      "prefillProgress": 0.78,
+      "prefillInputDone": 11700,
+      "prefillInputTotal": 15000,
+      "timeToFirstByteMs": 11800,
+      "upstreamName": "qwen3-32b-local",
+      "publicJobId": "job_exec_research_summary_001"
+    }
+  ],
+  "gpu_queue": [
+    {
+      "id": "gpu-work-queued-001",
+      "source": "mcp.submit_job",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "queued",
+      "phase": "waiting",
+      "priority": 1,
+      "ageMs": 23200,
+      "publicJobId": "job_followup_analysis_001"
+    },
+    {
+      "id": "gpu-work-queued-002",
+      "source": "openai.responses",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "queued",
+      "phase": "waiting",
+      "priority": 4,
+      "ageMs": 16100,
+      "publicJobId": "job_background_eval_002"
+    },
+    {
+      "id": "gpu-work-queued-003",
+      "source": "mcp.wait_job",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "queued",
+      "phase": "waiting",
+      "priority": 8,
+      "ageMs": 7200,
+      "publicJobId": "job_low_priority_notes_003"
+    }
+  ],
+  "recent_work": [],
+  "runtime_timeline": []
+}

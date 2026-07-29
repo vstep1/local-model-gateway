@@ -1,0 +1,60 @@
+{
+  "service": "local-model-gateway",
+  "loaded_model": "qwen3-32b-research-context-131k-q4-k-m-managed-runtime-with-long-alias",
+  "loading_model": null,
+  "uptime_seconds": 3811,
+  "managed_runtimes": [
+    {
+      "alias": "qwen3-32b-research-context-131k-q4-k-m-managed-runtime-with-long-alias",
+      "state": "loaded",
+      "enabled": true,
+      "activeRequests": 0,
+      "maxConcurrency": 1,
+      "queuedRequests": 0,
+      "loadPhase": "ready",
+      "loadProgress": 1,
+      "loadProgressSource": "progress_file",
+      "loadElapsedMs": 42200,
+      "lastUsedAt": "2026-06-19T08:44:00.000Z",
+      "upstreamModel": "huggingface-local-cache/qwen3-32b-q4-k-m-super-long-upstream-model-name-for-overflow-checking",
+      "prefillProgress": null,
+      "prefillInputDone": null,
+      "prefillInputTotal": null
+    },
+    {
+      "alias": "minimax-m2.7-experimental-adapter-with-very-long-name-and-fallback-routing",
+      "state": "unloaded",
+      "enabled": true,
+      "activeRequests": 0,
+      "maxConcurrency": 1,
+      "queuedRequests": 0,
+      "loadPhase": "idle",
+      "loadProgress": 0,
+      "loadProgressSource": "not_exposed",
+      "loadElapsedMs": null,
+      "lastUsedAt": "2026-06-19T07:58:00.000Z",
+      "upstreamModel": "local-artifacts/minimax-m2.7-q5-k-m-long-local-path-redacted-in-real-status",
+      "prefillProgress": null,
+      "prefillInputDone": null,
+      "prefillInputTotal": null
+    }
+  ],
+  "active_work": [],
+  "gpu_queue": [],
+  "recent_work": [
+    {
+      "id": "gpu-work-with-a-very-long-stable-identifier-for-dashboard-overflow-testing-001",
+      "source": "openai.chat.completions",
+      "runtimeAlias": "qwen3-32b-research-context-131k-q4-k-m-managed-runtime-with-long-alias",
+      "runtimeAdapter": "launchd-runtime-adapter-with-long-label",
+      "runtimeMode": "managed_runtime_with_exclusive_gpu_residency",
+      "state": "succeeded",
+      "failureCategory": null,
+      "errorText": null,
+      "activeDurationMs": 9200,
+      "ageMs": 48200,
+      "publicJobId": "job_with_long_public_identifier_for_visual_overflow_testing_001"
+    }
+  ],
+  "runtime_timeline": []
+}

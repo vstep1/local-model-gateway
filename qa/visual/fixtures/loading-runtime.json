@@ -1,0 +1,75 @@
+{
+  "service": "local-model-gateway",
+  "loaded_model": null,
+  "loading_model": "qwen3-32b-local",
+  "uptime_seconds": 944,
+  "managed_runtimes": [
+    {
+      "alias": "qwen3-32b-local",
+      "state": "loading",
+      "enabled": true,
+      "activeRequests": 1,
+      "maxConcurrency": 1,
+      "queuedRequests": 2,
+      "loadPhase": "model-load",
+      "loadProgress": 0.64,
+      "loadProgressSource": "progress_file",
+      "loadElapsedMs": 24411,
+      "lastUsedAt": null,
+      "upstreamModel": "qwen3-32b-q4-k-m",
+      "prefillProgress": 0.42,
+      "prefillInputDone": 4200,
+      "prefillInputTotal": 10000
+    }
+  ],
+  "active_work": [
+    {
+      "id": "gpu-work-loading-prefill-001",
+      "source": "openai.responses",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "running",
+      "phase": "prefill",
+      "priority": 0,
+      "ageMs": 18400,
+      "activeDurationMs": 15120,
+      "requestBytes": 184320,
+      "responseBytes": 2048,
+      "bandwidthBps": 8800,
+      "prefillProgress": 0.42,
+      "prefillInputDone": 4200,
+      "prefillInputTotal": 10000,
+      "timeToFirstByteMs": null,
+      "upstreamName": "qwen3-32b-local",
+      "publicJobId": "job_prefill_progress_001"
+    }
+  ],
+  "gpu_queue": [
+    {
+      "id": "gpu-work-queued-001",
+      "source": "mcp.submit_job",
+      "runtimeAlias": "qwen3-32b-local",
+      "runtimeAdapter": "launchd",
+      "runtimeMode": "managed_runtime",
+      "state": "queued",
+      "phase": "waiting",
+      "priority": 2,
+      "ageMs": 9100,
+      "publicJobId": "job_waiting_for_load_001"
+    }
+  ],
+  "recent_work": [],
+  "runtime_timeline": [
+    {
+      "createdAt": "2026-06-19T08:12:00.000Z",
+      "eventType": "runtime_load_started",
+      "message": "Starting managed runtime for qwen3-32b-local.",
+      "runtimeAlias": "qwen3-32b-local",
+      "workItemId": null,
+      "source": "runtime-adapter",
+      "state": "loading",
+      "metadataJson": "{\"adapter\":\"launchd\",\"progressSource\":\"progress_file\"}"
+    }
+  ]
+}

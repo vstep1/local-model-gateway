@@ -1,0 +1,15 @@
+.__argos__ *,
+.__argos__ *::before,
+.__argos__ *::after {
+  animation-delay: 0s !important;
+  animation-duration: 0s !important;
+  caret-color: transparent !important;
+  transition-delay: 0s !important;
+  transition-duration: 0s !important;
+}
+
+.__argos__ #last-updated,
+.__argos__ .timeline-time,
+.__argos__ [data-volatile] {
+  visibility: hidden !important;
+}

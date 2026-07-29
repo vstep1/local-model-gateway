@@ -26,6 +26,7 @@ Use this file when an agent is installing, configuring, or debugging this repo.
 - Port `8787` occupied: verify whether it is this gateway. If another process owns it, stop that process or choose a deliberate config change.
 - Runtime health unavailable: this can be normal when a managed runtime is unloaded. Check the runtime service script and let the gateway start it on demand.
 - Model does not appear in `/v1/models`: enable a managed runtime, add a startup LoRA model, or configure an external upstream intentionally.
+- Native module errors after switching Node versions: this repo targets Node 22 in CI. If `better_sqlite3.node` reports a `NODE_MODULE_VERSION` mismatch or cannot be found, reinstall or rebuild dependencies with Node 22 before running tests. On macOS without working Xcode command-line tools, a cached prebuild can often be restored from the package directory with `node ../prebuild-install/bin.js --verbose`.
 
 ## Agent Output Expectations
 
