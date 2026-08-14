@@ -14,8 +14,10 @@ from typing import Any
 
 import soundfile as sf
 import torch
-from audio_segments import generate_segmented_audio, to_samples_channels
+from audio_utils import ensure_minimum_samples, to_samples_channels
+from cache_control import preallocated_kv_cache
 from diffusers import ModularPipeline
+from duration_control import suppress_early_audio_end
 
 
 HOST = os.environ.get("MINIMAX_MUSIC3_HOST", "127.0.0.1")
@@ -26,9 +28,7 @@ MODEL_ALIAS = "minimax-music3"
 PROGRESS_PATH = Path(
     os.environ.get("MINIMAX_MUSIC3_PROGRESS_PATH", MODEL_PATH.parent / "load-progress.json")
 ).expanduser().resolve()
-MAX_SEGMENT_SECONDS = float(os.environ.get("MINIMAX_MUSIC3_MAX_SEGMENT_SECONDS", "20"))
-CROSSFADE_SECONDS = float(os.environ.get("MINIMAX_MUSIC3_CROSSFADE_SECONDS", "1"))
-MAX_SEGMENTS = int(os.environ.get("MINIMAX_MUSIC3_MAX_SEGMENTS", "24"))
+AUDIO_END_TOKEN_ID = 151670
 
 
 def write_progress(phase: str, progress: float | None, error: str | None = None) -> None:
@@ -153,34 +153,42 @@ class Handler(BaseHTTPRequestHandler):
             frames = int(request.get("max_new_tokens", 250))
             duration = float(request.get("audio_duration", frames / 25.0))
             duration = min(max(duration, 0.04), 360.0)
+            minimum_duration = float(request.get("min_audio_duration", duration))
+            minimum_duration = min(max(minimum_duration, 0.0), duration)
             steps = int(request.get("num_inference_steps", 30))
             seed = int(request.get("seed", 0))
-            target_samples = round(duration * SAMPLING_RATE)
-            crossfade_samples = round(CROSSFADE_SECONDS * SAMPLING_RATE)
-
-            def generate_segment(segment_index: int):
-                segment_generator = torch.Generator("cpu").manual_seed(seed + segment_index)
-                audio = PIPE(
-                    prompt=prompt,
-                    lyrics=lyrics,
-                    audio_duration=min(duration, MAX_SEGMENT_SECONDS),
-                    generator=segment_generator,
-                    num_inference_steps=steps,
-                    output="audios",
-                    output_type="np",
-                )[0]
-                samples = to_samples_channels(audio)
-                if DEVICE.type == "mps":
-                    torch.mps.empty_cache()
-                return samples
+            max_frames = int(duration * PIPE.frame_rate)
+            minimum_frames = int(minimum_duration * PIPE.frame_rate)
 
             with GENERATION_LOCK:
-                samples = generate_segmented_audio(
-                    generate_segment,
-                    target_samples=target_samples,
-                    crossfade_samples=crossfade_samples,
-                    max_segments=MAX_SEGMENTS,
+                generator = torch.Generator("cpu").manual_seed(seed)
+                with (
+                    preallocated_kv_cache(
+                        PIPE.language_model.model,
+                        max_new_tokens=max_frames,
+                    ),
+                    suppress_early_audio_end(
+                        PIPE.language_model.lm_head,
+                        minimum_frames=minimum_frames,
+                        end_token_id=AUDIO_END_TOKEN_ID,
+                    ),
+                ):
+                    audio = PIPE(
+                        prompt=prompt,
+                        lyrics=lyrics,
+                        audio_duration=duration,
+                        generator=generator,
+                        num_inference_steps=steps,
+                        output="audios",
+                        output_type="np",
+                    )[0]
+                samples = to_samples_channels(audio)
+                samples = ensure_minimum_samples(
+                    samples,
+                    minimum_samples=round(minimum_duration * SAMPLING_RATE),
                 )
+                if DEVICE.type == "mps":
+                    torch.mps.empty_cache()
 
             output = io.BytesIO()
             sf.write(output, samples, SAMPLING_RATE, format="WAV", subtype="PCM_16")

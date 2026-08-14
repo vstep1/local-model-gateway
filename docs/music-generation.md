@@ -16,8 +16,8 @@ The gateway validates and forwards these required fields:
 - `instructions`: musical style and production direction
 
 It currently accepts WAV, non-streaming output. Runtime-specific generation
-controls such as `seed`, `max_new_tokens`, `audio_duration`, and
-`num_inference_steps` pass through unchanged.
+controls such as `seed`, `max_new_tokens`, `audio_duration`,
+`min_audio_duration`, and `num_inference_steps` pass through unchanged.
 
 ```bash
 curl http://127.0.0.1:8787/v1/audio/speech \
@@ -27,6 +27,8 @@ curl http://127.0.0.1:8787/v1/audio/speech \
     "input": "[Verse]\nA local song begins",
     "instructions": "Dreamy synth-pop with intimate vocals.",
     "max_new_tokens": 125,
+    "audio_duration": 5,
+    "min_audio_duration": 5,
     "num_inference_steps": 30,
     "seed": 7,
     "response_format": "wav",

@@ -25,6 +25,9 @@ All notable changes to Local Model Gateway are documented here.
 - Managed runtime proxy failures are recorded as failed work rather than
   successful work, and cancelled MiniMax adapter responses no longer emit a
   second error over a closed connection.
+- MiniMax Music 3 now performs long MPS generations in one native pass with a
+  preallocated KV cache and an optional minimum duration, replacing stitched
+  sections and crossfades.
 
 [0.5.0]: https://github.com/vstep1/local-model-gateway/compare/v0.4.0...v0.5.0
 
