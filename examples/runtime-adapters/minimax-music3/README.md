@@ -9,6 +9,14 @@ The tested path is Apple Silicon with MPS and BF16. The model download is about
 28 GiB, generation is compute-intensive, and the model weights retain their
 upstream license. This repository does not redistribute them.
 
+For long requests, the adapter renders memory-bounded 20-second Music3
+sections and joins them with one-second crossfades until the exact requested
+sample count is available. This avoids the growing autoregressive cache of a
+single multi-minute pass and also handles Music3 emitting its end-of-audio
+token before the requested upper bound. Tune the defaults with
+`MINIMAX_MUSIC3_MAX_SEGMENT_SECONDS`, `MINIMAX_MUSIC3_CROSSFADE_SECONDS`, and
+`MINIMAX_MUSIC3_MAX_SEGMENTS`.
+
 ## Install
 
 From the repository root:
@@ -16,6 +24,7 @@ From the repository root:
 ```bash
 mkdir -p runtime/minimax-music3
 cp examples/runtime-adapters/minimax-music3/server.py runtime/minimax-music3/
+cp examples/runtime-adapters/minimax-music3/audio_segments.py runtime/minimax-music3/
 cp examples/runtime-adapters/minimax-music3/requirements.txt runtime/minimax-music3/
 cp examples/runtime-adapters/minimax-music3/minimax-music3-service.sh runtime/
 chmod +x runtime/minimax-music3-service.sh
@@ -59,11 +68,13 @@ If the result has top-level `status: fail`, follow only the generated plan:
 npx local-model-gateway doctor --fix-plan
 ```
 
-Otherwise, start the gateway normally and open the Music tab:
+Otherwise, start the gateway normally. The optional LibreChat music dashboard
+runs separately from the gateway dashboard and is available at `/music` in
+that app (port 3080 in the standard local setup):
 
 ```bash
 npx local-model-gateway start
-open http://127.0.0.1:8787/dashboard#music
+open http://127.0.0.1:3080/music
 ```
 
 ## API smoke test

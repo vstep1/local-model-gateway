@@ -14,6 +14,7 @@ from typing import Any
 
 import soundfile as sf
 import torch
+from audio_segments import generate_segmented_audio, to_samples_channels
 from diffusers import ModularPipeline
 
 
@@ -25,6 +26,9 @@ MODEL_ALIAS = "minimax-music3"
 PROGRESS_PATH = Path(
     os.environ.get("MINIMAX_MUSIC3_PROGRESS_PATH", MODEL_PATH.parent / "load-progress.json")
 ).expanduser().resolve()
+MAX_SEGMENT_SECONDS = float(os.environ.get("MINIMAX_MUSIC3_MAX_SEGMENT_SECONDS", "20"))
+CROSSFADE_SECONDS = float(os.environ.get("MINIMAX_MUSIC3_CROSSFADE_SECONDS", "1"))
+MAX_SEGMENTS = int(os.environ.get("MINIMAX_MUSIC3_MAX_SEGMENTS", "24"))
 
 
 def write_progress(phase: str, progress: float | None, error: str | None = None) -> None:
@@ -151,20 +155,33 @@ class Handler(BaseHTTPRequestHandler):
             duration = min(max(duration, 0.04), 360.0)
             steps = int(request.get("num_inference_steps", 30))
             seed = int(request.get("seed", 0))
-            generator = torch.Generator("cpu").manual_seed(seed)
+            target_samples = round(duration * SAMPLING_RATE)
+            crossfade_samples = round(CROSSFADE_SECONDS * SAMPLING_RATE)
 
-            with GENERATION_LOCK:
+            def generate_segment(segment_index: int):
+                segment_generator = torch.Generator("cpu").manual_seed(seed + segment_index)
                 audio = PIPE(
                     prompt=prompt,
                     lyrics=lyrics,
-                    audio_duration=duration,
-                    generator=generator,
+                    audio_duration=min(duration, MAX_SEGMENT_SECONDS),
+                    generator=segment_generator,
                     num_inference_steps=steps,
                     output="audios",
-                    output_type="pt",
+                    output_type="np",
                 )[0]
+                samples = to_samples_channels(audio)
+                if DEVICE.type == "mps":
+                    torch.mps.empty_cache()
+                return samples
 
-            samples = audio.squeeze(0).T.float().cpu().numpy()
+            with GENERATION_LOCK:
+                samples = generate_segmented_audio(
+                    generate_segment,
+                    target_samples=target_samples,
+                    crossfade_samples=crossfade_samples,
+                    max_segments=MAX_SEGMENTS,
+                )
+
             output = io.BytesIO()
             sf.write(output, samples, SAMPLING_RATE, format="WAV", subtype="PCM_16")
             encoded = output.getvalue()
