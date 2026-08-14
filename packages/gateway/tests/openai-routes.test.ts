@@ -88,6 +88,7 @@ function runtime(alias: string, baseUrl: string): ManagedRuntimeConfig {
     stopArgs: ['true'],
     stopSequences: [],
     stopTimeoutMs: 10_000,
+    supportsAudio: alias.includes('music'),
     supportsReasoning: false,
     supportsStreaming: true,
     upstreamModel: alias,
@@ -633,6 +634,109 @@ describe('openai-compatible routes', () => {
       await harness.cleanup();
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('proxies audio speech through managed runtime admission', async () => {
+    const receivedBodies: Array<Record<string, unknown>> = [];
+    const wav = Buffer.from('RIFF-test-wave');
+    const server = http.createServer((req, res) => {
+      if (req.method !== 'POST' || req.url !== '/v1/audio/speech') {
+        res.writeHead(404).end();
+        return;
+      }
+      let raw = '';
+      req.setEncoding('utf8');
+      req.on('data', (chunk) => {
+        raw += chunk;
+      });
+      req.on('end', () => {
+        receivedBodies.push(JSON.parse(raw) as Record<string, unknown>);
+        res.writeHead(200, { 'content-type': 'audio/wav' });
+        res.end(wav);
+      });
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+
+    const harness = await createOpenAiApp();
+    try {
+      const coordinator = new GpuCoordinator(
+        [runtime('minimax-music3', `http://127.0.0.1:${address.port}/v1`)],
+        harness.store,
+        {
+          isHealthy: async () => true,
+          runServiceCommand: async () => undefined,
+        },
+      );
+      const app = new Hono();
+      registerOpenAiRoutes(
+        app,
+        harness.scheduler,
+        harness.store.getRuntimeSettings(),
+        () => ['ep2', 'minimax-music3'],
+        undefined,
+        coordinator,
+      );
+
+      const res = await app.request('/v1/audio/speech', {
+        body: JSON.stringify({
+          input: '[Verse]\nA small test song',
+          instructions: 'Warm acoustic pop.',
+          model: 'minimax-music3',
+          response_format: 'wav',
+          seed: 7,
+          stream: false,
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.headers.get('content-type'), 'audio/wav');
+      assert.deepEqual(Buffer.from(await res.arrayBuffer()), wav);
+      assert.equal(receivedBodies[0]?.model, 'minimax-music3');
+      assert.equal(receivedBodies[0]?.seed, 7);
+      assert.equal(coordinator.status().recent_work[0]?.state, 'succeeded');
+    } finally {
+      await harness.cleanup();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('rejects audio speech for runtimes without audio capability', async () => {
+    const harness = await createOpenAiApp();
+    try {
+      const coordinator = new GpuCoordinator(
+        [runtime('text-only', 'http://127.0.0.1:18999/v1')],
+        harness.store,
+      );
+      const app = new Hono();
+      registerOpenAiRoutes(
+        app,
+        harness.scheduler,
+        harness.store.getRuntimeSettings(),
+        () => ['text-only'],
+        undefined,
+        coordinator,
+      );
+
+      const res = await app.request('/v1/audio/speech', {
+        body: JSON.stringify({
+          input: '[Verse]\nA test',
+          instructions: 'Acoustic pop.',
+          model: 'text-only',
+        }),
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+      });
+
+      assert.equal(res.status, 404);
+      assert.match(await res.text(), /No managed audio runtime configured/);
+    } finally {
+      await harness.cleanup();
     }
   });
 

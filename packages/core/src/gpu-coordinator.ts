@@ -331,6 +331,7 @@ export class GpuCoordinator {
     maxConcurrency: number;
     activeRequests: number;
     recommendedPromptBudget: number | null;
+    supportsAudio: boolean;
     supportsReasoning: boolean;
     supportsStreaming: boolean;
   }> {
@@ -344,11 +345,16 @@ export class GpuCoordinator {
         maxConcurrency: runtime.config.maxConcurrency,
         recommendedPromptBudget: runtime.config.recommendedPromptBudget,
         state: runtime.state,
+        supportsAudio: runtime.config.supportsAudio === true,
         supportsReasoning: runtime.config.supportsReasoning,
         supportsStreaming: runtime.config.supportsStreaming,
         upstreamModel: runtime.config.upstreamModel,
       }))
       .sort((a, b) => a.alias.localeCompare(b.alias));
+  }
+
+  hasAudioModel(model: string): boolean {
+    return this.runtimes.get(model.toLowerCase())?.config.supportsAudio === true;
   }
 
   async refreshRuntimeHealth(): Promise<void> {
@@ -425,6 +431,7 @@ export class GpuCoordinator {
           .filter((item) => item.model.toLowerCase() === runtime.config.alias.toLowerCase())
           .length,
         state: runtime.state,
+        supportsAudio: runtime.config.supportsAudio === true,
         telemetryUpdatedAt: runtimeTelemetry.get(runtime.config.alias.toLowerCase())?.telemetryUpdatedAt ?? null,
         upstreamModel: runtime.config.upstreamModel,
       }))
@@ -470,6 +477,17 @@ export class GpuCoordinator {
     signal?: AbortSignal,
   ): Promise<Response> {
     return this.proxyRuntime('/responses', body, model, source, priority, maxQueueWaitMs, signal);
+  }
+
+  async proxyAudioSpeech(
+    body: Record<string, unknown>,
+    model: string,
+    source: JobSource,
+    priority: PriorityTier,
+    maxQueueWaitMs: number | undefined,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    return this.proxyRuntime('/audio/speech', body, model, source, priority, maxQueueWaitMs, signal);
   }
 
   async generateText(
@@ -598,7 +616,7 @@ export class GpuCoordinator {
   }
 
   private async proxyRuntime(
-    path: '/chat/completions' | '/responses',
+    path: '/audio/speech' | '/chat/completions' | '/responses',
     body: Record<string, unknown>,
     model: string,
     source: JobSource,

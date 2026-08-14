@@ -13,6 +13,7 @@
     "recommended_prompt_budget": 98304,
     "supports_streaming": true,
     "supports_reasoning": false,
+    "supports_audio": false,
     "upstream_model": "qwen3-32b"
   },
   "minimax-m2.7": {
@@ -29,6 +30,7 @@
     "recommended_prompt_budget": 65536,
     "supports_streaming": true,
     "supports_reasoning": true,
+    "supports_audio": false,
     "upstream_model": "MiniMaxAI/MiniMax-M2.7"
   }
 }

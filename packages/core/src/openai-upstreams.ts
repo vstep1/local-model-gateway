@@ -58,7 +58,7 @@ export function makeProxyError(status: number, message: string): Response {
 
 export async function proxyOpenAiJson(
   upstreams: OpenAiUpstreamConfig[],
-  path: '/chat/completions' | '/responses',
+  path: '/audio/speech' | '/chat/completions' | '/responses',
   body: Record<string, unknown>,
   model: string,
   clientSignal?: AbortSignal,

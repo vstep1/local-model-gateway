@@ -59,7 +59,7 @@ function authorized(request: Request, authToken: string): boolean {
   return header === `Bearer ${authToken}`;
 }
 
-function cappedInteger(value: string | undefined, fallback: number, max: number): number {
+export function cappedInteger(value: string | undefined, fallback: number, max: number): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric) || numeric <= 0) return fallback;
   return Math.max(1, Math.min(Math.trunc(numeric), max));
@@ -117,6 +117,7 @@ export function discoveryManifest(
     context_window: runtime.contextWindow,
     context_notes: runtime.contextNotes,
     recommended_prompt_budget: runtime.recommendedPromptBudget,
+    supports_audio: runtime.supportsAudio,
     supports_streaming: runtime.supportsStreaming,
     supports_reasoning: runtime.supportsReasoning,
   }));

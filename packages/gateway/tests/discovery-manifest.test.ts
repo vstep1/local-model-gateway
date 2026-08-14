@@ -9,7 +9,7 @@ import {
   type ActiveRuntimeSettings,
   type GatewayConfig,
 } from '@local-model-gateway/core';
-import { discoveryManifest } from '../src/server.js';
+import { cappedInteger, discoveryManifest } from '../src/server.js';
 import { openAiModelAliases } from '../src/server.js';
 
 function config(): GatewayConfig {
@@ -44,6 +44,7 @@ function config(): GatewayConfig {
         stopArgs: ['stop'],
         stopSequences: [],
         stopTimeoutMs: 60000,
+        supportsAudio: true,
         supportsReasoning: false,
         supportsStreaming: true,
         upstreamModel: 'qwen3-32b',
@@ -96,6 +97,17 @@ describe('discovery manifest', () => {
     const models = manifest.models as Array<Record<string, unknown>>;
     assert.equal(models.some((model) => model.id === 'qwen3-32b'), true);
     assert.equal(models.find((model) => model.id === 'qwen3-32b')?.recommended_prompt_budget, 98304);
+    assert.equal(models.find((model) => model.id === 'qwen3-32b')?.supports_audio, true);
+  });
+});
+
+describe('status query limits', () => {
+  it('uses fallbacks and clamps positive integers', () => {
+    assert.equal(cappedInteger(undefined, 20, 200), 20);
+    assert.equal(cappedInteger('invalid', 20, 200), 20);
+    assert.equal(cappedInteger('-1', 20, 200), 20);
+    assert.equal(cappedInteger('4.9', 20, 200), 4);
+    assert.equal(cappedInteger('999', 20, 200), 200);
   });
 });
 

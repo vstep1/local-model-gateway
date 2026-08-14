@@ -206,6 +206,7 @@ export interface ManagedRuntimeConfig {
   stopTimeoutMs: number;
   stopSequences: string[];
   recommendedPromptBudget: number | null;
+  supportsAudio?: boolean;
   supportsReasoning: boolean;
   supportsStreaming: boolean;
   upstreamModel: string;
@@ -248,6 +249,7 @@ export interface ManagedRuntimeStatus {
   prefillTaskId: number | null;
   queuedRequests: number;
   state: ManagedRuntimeState;
+  supportsAudio: boolean;
   telemetryUpdatedAt: string | null;
   upstreamModel: string;
 }

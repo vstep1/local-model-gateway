@@ -11,6 +11,8 @@ script. Each runtime needs:
 - `start_args`
 - `stop_args`
 - `max_concurrency`
+- optional `supports_audio: true` for runtimes that implement non-streaming WAV
+  output at `POST /v1/audio/speech`
 - optional `load_progress_path` pointing to a small JSON or text file written by
   the runtime adapter during model load
 - optional context and timeout metadata for client recommendations
@@ -39,6 +41,10 @@ when `llama-server` emits `prompt processing progress` log lines.
 
 External OpenAI-compatible APIs can be listed under `openai_upstreams`; they are
 passive proxies and are not part of local GPU residency management.
+
+The dashboard Music tab lists only managed runtimes with `supports_audio: true`.
+The discovery manifest publishes the same capability. Audio requests sent to a
+runtime without the flag are rejected before the runtime is loaded.
 
 LoRA adapters that should be imported at startup can be listed under
 `startup_models` as `alias: ./path/to/adapter.gguf`. The default quick-start

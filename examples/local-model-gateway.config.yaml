@@ -45,6 +45,7 @@ runtimes:
     recommended_prompt_budget: 98304
     supports_streaming: true
     supports_reasoning: false
+    supports_audio: false
   minimax-m2.7:
     enabled: false
     base_url: http://127.0.0.1:8000/v1
@@ -61,5 +62,6 @@ runtimes:
     recommended_prompt_budget: 65536
     supports_streaming: true
     supports_reasoning: true
+    supports_audio: false
 
 openai_upstreams: []

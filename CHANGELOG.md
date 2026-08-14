@@ -1,6 +1,23 @@
 # Changelog
 
-All notable changes to this project are documented here.
+All notable changes to Local Model Gateway are documented here.
+
+## [0.5.0] - 2026-08-14
+
+### Added
+
+- Managed, OpenAI-compatible `POST /v1/audio/speech` proxying with shared GPU
+  admission, cancellation, history, and binary WAV passthrough.
+- `supports_audio` managed-runtime capability metadata in config, status, runtime
+  discovery, and the well-known manifest.
+- An experimental MiniMax Music 3 macOS/MPS runtime adapter and setup guide.
+
+### Changed
+
+- Audio requests are rejected unless the selected managed runtime explicitly
+  declares `supports_audio: true`.
+
+[0.5.0]: https://github.com/vstep1/local-model-gateway/compare/v0.4.0...v0.5.0
 
 ## v0.4.0 - 2026-05-31
 

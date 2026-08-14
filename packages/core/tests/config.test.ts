@@ -73,6 +73,7 @@ describe('gateway config', () => {
           '    service_script: ./runtime/qwen.sh',
           '    load_progress_path: ./runtime/qwen-progress.json',
           '    context_window: 131072',
+          '    supports_audio: true',
         ].join('\n'),
         'utf8',
       );
@@ -84,6 +85,7 @@ describe('gateway config', () => {
       assert.equal(config.managedRuntimes[0].serviceScript, path.join(root, 'runtime/qwen.sh'));
       assert.equal(config.managedRuntimes[0].loadProgressPath, path.join(root, 'runtime/qwen-progress.json'));
       assert.equal(config.managedRuntimes[0].contextWindow, 131072);
+      assert.equal(config.managedRuntimes[0].supportsAudio, true);
     });
   });
 

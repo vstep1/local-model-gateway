@@ -44,6 +44,17 @@ const responsesSchema = z
   })
   .passthrough();
 
+const audioSpeechSchema = z
+  .object({
+    input: z.string().min(1),
+    instructions: z.string().min(1),
+    max_queue_wait_ms: z.number().int().positive().optional(),
+    model: z.string().min(1),
+    response_format: z.literal('wav').optional().default('wav'),
+    stream: z.literal(false).optional().default(false),
+  })
+  .passthrough();
+
 function makeError(status: number, message: string, type = 'invalid_request_error'): Response {
   return Response.json(
     {
@@ -343,6 +354,30 @@ export function registerOpenAiRoutes(
     }));
 
     return Response.json({ object: 'list', data });
+  });
+
+  app.post('/v1/audio/speech', async (c) => {
+    let parsed: z.infer<typeof audioSpeechSchema>;
+    try {
+      const body = await c.req.json();
+      parsed = audioSpeechSchema.parse(body);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid request body';
+      return makeError(400, message);
+    }
+
+    if (!gpuCoordinator?.hasAudioModel(parsed.model)) {
+      return makeError(404, `No managed audio runtime configured for model: ${parsed.model}`);
+    }
+
+    return gpuCoordinator.proxyAudioSpeech(
+      parsed as Record<string, unknown>,
+      parsed.model,
+      'openai',
+      2,
+      parsed.max_queue_wait_ms ?? settings.maxQueueWaitMs,
+      c.req.raw.signal,
+    );
   });
 
   app.post('/v1/chat/completions', async (c) => {

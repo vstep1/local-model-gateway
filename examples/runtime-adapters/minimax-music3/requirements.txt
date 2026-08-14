@@ -1,0 +1,6 @@
+diffusers @ git+https://github.com/huggingface/diffusers@dafe3733fcfdbf3c48915fe77be3aef65b5d6a2d
+accelerate==1.14.0
+huggingface_hub==1.27.0
+soundfile==0.14.0
+torch==2.13.0
+transformers==5.15.0

@@ -286,6 +286,7 @@ function parseManagedRuntimes(configFile: JsonRecord, timeoutMs: number, configD
         stopArgs: asStringArray(record.stopArgs ?? record.stop_args, ['stop']),
         stopSequences: asStringArray(record.stopSequences ?? record.stop_sequences, []),
         stopTimeoutMs: asNumber(record.stopTimeoutMs ?? record.stop_timeout_ms, 60_000),
+        supportsAudio: asBoolean(record.supportsAudio ?? record.supports_audio, false),
         supportsReasoning: asBoolean(record.supportsReasoning ?? record.supports_reasoning, false),
         supportsStreaming: asBoolean(record.supportsStreaming ?? record.supports_streaming, true),
         upstreamModel: String(record.upstreamModel ?? record.upstream_model ?? alias).trim(),

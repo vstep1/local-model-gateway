@@ -49,6 +49,8 @@ dashboard.
   letting them fight over the same GPU.
 - Point local LLM apps, scripts, and CLIs at one model endpoint while the gateway
   handles queueing and runtime swaps.
+- Generate music from an audio-capable client without bypassing the shared GPU
+  queue.
 - Swap between different local model runtimes only when active work drains, so
   long requests are not interrupted mid-stream.
 - Keep large MCP tool catalogs out of an agent prompt until a tool is actually
@@ -61,8 +63,7 @@ Local Model Gateway is:
 - a local model gateway for OpenAI-compatible clients
 - a shared scheduler for GPU-bound local model work
 - a runtime residency manager for loading, unloading, and swapping local models
-- a browser dashboard for seeing loaded models, active work, queued requests,
-  recent completed work, runtime history, prefill, and transfer telemetry
+- a browser dashboard for seeing runtime activity
 - an MCP runtime surface for agents that need status, model discovery, setup
   snippets, and cancellation tools
 
@@ -80,12 +81,12 @@ multiple local agents and LLM apps at the same time.
 
 | Capability | What it does |
 | --- | --- |
-| OpenAI-compatible API | Drop-in `/v1/chat/completions`, `/v1/responses`, and `/v1/models` routes for local agents. |
+| OpenAI-compatible API | Drop-in `/v1/chat/completions`, `/v1/responses`, `/v1/audio/speech`, and `/v1/models` routes for local agents. |
 | MCP endpoint | Runtime control and setup tools over Streamable HTTP at `/mcp`. |
 | Durable GPU queue | SQLite-backed priority/FIFO work admission across URL and MCP entrypoints. |
 | Runtime residency | Starts, health-checks, unloads, and swaps managed local runtimes on demand. |
 | Stop command cancellation | Exact user commands like `stop` or `cancel generation` cancel matching in-flight OpenAI work instead of starting another GPU request. |
-| Browser dashboard | Read-only `/dashboard` view for loaded models, runtime history, load progress, prefill, bandwidth, active work, queued requests, and recent completed work. |
+| Browser dashboard | `/dashboard` telemetry for runtime activity, queue state, and recent work. |
 | Launch adapters | macOS launchd and generic shell helpers now; Linux systemd and Docker are reference-only templates. |
 | Lazy MCP broker | Keeps downstream MCP catalogs out of the prompt until a tool is actually searched or described. |
 | Discovery manifest | `/.well-known/local-model-gateway.json` for clients that want model, timeout, and endpoint hints. |
@@ -100,7 +101,8 @@ flowchart LR
   Q --> C["GpuCoordinator"]
   C --> R1["Managed runtime: qwen3-32b"]
   C --> R2["Managed runtime: minimax-m2.7"]
-  C --> R3["Runtime adapter: llama-cli one-shot"]
+  C --> R3["Managed audio runtime: minimax-music3"]
+  C --> R4["Runtime adapter: llama-cli one-shot"]
   G --> B["Lazy MCP broker"]
   B --> D["Downstream MCP servers"]
 ```
@@ -244,6 +246,12 @@ curl http://127.0.0.1:8787/v1/chat/completions \
   }'
 ```
 
+Audio-capable managed runtimes also accept non-streaming WAV requests through
+`POST /v1/audio/speech`. See [Music Generation](docs/music-generation.md) for
+the request shape and the
+[MiniMax Music 3 adapter](examples/runtime-adapters/minimax-music3/README.md)
+for a tested local setup.
+
 ### MCP
 
 Connect MCP clients to:
@@ -295,6 +303,7 @@ See [Runtime Config](docs/runtime-config.md) and
 Runtime adapter examples:
 
 - [macOS launchd](examples/runtime-adapters/macos/README.md)
+- [MiniMax Music 3 on macOS](examples/runtime-adapters/minimax-music3/README.md)
 - [Linux systemd reference templates](examples/runtime-adapters/linux/systemd/README.md)
 - [Docker Compose reference template](examples/runtime-adapters/docker/README.md)
 
