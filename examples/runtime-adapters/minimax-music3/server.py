@@ -173,6 +173,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
             self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError):
+            # The client cancelled after generation completed; there is no
+            # connection left on which to send a second error response.
+            return
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             self.send_json(HTTPStatus.BAD_REQUEST, {"error": {"message": str(exc)}})
         except Exception as exc:

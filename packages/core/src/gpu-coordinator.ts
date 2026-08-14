@@ -656,7 +656,10 @@ export class GpuCoordinator {
         requestBody,
         model,
         lease.signal,
-        () => lease.release(lease.signal.aborted ? 'cancelled' : 'succeeded'),
+        (errorText) => lease.release(
+          lease.signal.aborted ? 'cancelled' : errorText ? 'failed' : 'succeeded',
+          errorText,
+        ),
         telemetry,
       );
       if (!response.ok) {

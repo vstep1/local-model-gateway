@@ -916,6 +916,33 @@ describe('gpu coordinator', () => {
     }
   });
 
+  it('records managed runtime proxy failures as failed work', async () => {
+    const store = createStore();
+    const { hooks } = createHooks(['qwen3-32b']);
+    const coordinator = new GpuCoordinator(
+      [runtime('qwen3-32b', 'http://127.0.0.1:1/v1')],
+      store,
+      hooks,
+    );
+
+    try {
+      const response = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'fail upstream', role: 'user' }], model: 'qwen3-32b' },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+
+      assert.equal(response.status, 503);
+      const failed = store.listGpuWorkItems(1)[0];
+      assert.equal(failed?.state, 'failed');
+      assert.match(failed?.errorText ?? '', /All upstreams failed/);
+    } finally {
+      store.close();
+    }
+  });
+
   it('executes submit_job for managed runtime aliases through the coordinator', async () => {
     const qwen = await startFakeOpenAiServer('qwen');
     const { hooks } = createHooks();

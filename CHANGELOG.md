@@ -17,6 +17,15 @@ All notable changes to Local Model Gateway are documented here.
 - Audio requests are rejected unless the selected managed runtime explicitly
   declares `supports_audio: true`.
 
+### Fixed
+
+- Long-running audio requests now use the managed runtime timeout for response
+  headers and body transfer instead of failing at the HTTP client's shorter
+  default header timeout.
+- Managed runtime proxy failures are recorded as failed work rather than
+  successful work, and cancelled MiniMax adapter responses no longer emit a
+  second error over a closed connection.
+
 [0.5.0]: https://github.com/vstep1/local-model-gateway/compare/v0.4.0...v0.5.0
 
 ## v0.4.0 - 2026-05-31

@@ -36,6 +36,35 @@ function chatResponse(content: string): Record<string, unknown> {
 }
 
 describe('OpenAI upstream proxying', () => {
+  it('uses the configured upstream timeout while waiting for response headers', async () => {
+    const originalFetch = globalThis.fetch;
+    let dispatcherSeen = false;
+    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      dispatcherSeen = 'dispatcher' in (init ?? {});
+      return Response.json(chatResponse('configured transport'));
+    }) as typeof fetch;
+
+    try {
+      const pool = new OpenAiUpstreamPool([
+        {
+          apiKey: '',
+          apiKeyEnv: '',
+          baseUrl: 'http://127.0.0.1:1',
+          models: ['slow-headers'],
+          name: 'slow-headers',
+          timeoutMs: 500,
+          upstreamModel: 'slow-headers',
+        },
+      ]);
+
+      const response = await pool.proxyChatCompletions({}, 'slow-headers');
+      assert.equal(response.status, 200);
+      assert.equal(dispatcherSeen, true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('normalizes upstream base URLs and round-robins same-model upstreams', async () => {
     await withServer(async (request, response) => {
       const body = await requestBody(request);

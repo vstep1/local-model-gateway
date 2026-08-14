@@ -1,4 +1,5 @@
 import { OpenAiUpstreamConfig } from './types.js';
+import { Agent } from 'undici';
 
 const RETRYABLE_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 
@@ -62,19 +63,20 @@ export async function proxyOpenAiJson(
   body: Record<string, unknown>,
   model: string,
   clientSignal?: AbortSignal,
-  onComplete?: () => void,
+  onComplete?: (errorText?: string) => void,
   telemetry?: ProxyTelemetryCallbacks,
 ): Promise<Response> {
   let finished = false;
-  const finish = () => {
+  const finish = (errorText?: string) => {
     if (finished) return;
     finished = true;
-    onComplete?.();
+    onComplete?.(errorText);
   };
 
   if (upstreams.length === 0) {
-    finish();
-    return makeProxyError(404, `No upstream configured for model: ${model}`);
+    const message = `No upstream configured for model: ${model}`;
+    finish(message);
+    return makeProxyError(404, message);
   }
 
   const errors: string[] = [];
@@ -85,6 +87,10 @@ export async function proxyOpenAiJson(
     }
 
     const controller = new AbortController();
+    const dispatcher = new Agent({
+      bodyTimeout: upstream.timeoutMs,
+      headersTimeout: upstream.timeoutMs,
+    });
     const timeout = setTimeout(
       () => controller.abort(new Error(`Upstream ${upstream.name} timeout after ${upstream.timeoutMs}ms`)),
       upstream.timeoutMs,
@@ -98,10 +104,11 @@ export async function proxyOpenAiJson(
       cleanedUp = true;
       clearTimeout(timeout);
       clientSignal?.removeEventListener('abort', abortUpstream);
+      void dispatcher.close();
     };
-    const cleanupAndFinish = () => {
+    const cleanupAndFinish = (errorText?: string) => {
       cleanup();
-      finish();
+      finish(errorText);
     };
     clientSignal?.addEventListener('abort', abortUpstream, { once: true });
 
@@ -116,16 +123,23 @@ export async function proxyOpenAiJson(
     try {
       const response = await fetch(`${normalizeBaseUrl(upstream.baseUrl)}${path}`, {
         body: requestBody,
+        dispatcher,
         headers: {
           ...(upstream.apiKey ? { Authorization: `Bearer ${upstream.apiKey}` } : {}),
           'Content-Type': 'application/json',
         },
         method: 'POST',
         signal: controller.signal,
-      });
+      } as RequestInit & { dispatcher: Agent });
 
       if (response.ok || !RETRYABLE_STATUSES.has(response.status)) {
-        return new Response(wrapResponseBody(response.body, controller, cleanupAndFinish, telemetry), {
+        const responseError = response.ok ? undefined : `Upstream ${upstream.name} returned HTTP ${response.status}`;
+        return new Response(wrapResponseBody(
+          response.body,
+          controller,
+          () => cleanupAndFinish(responseError),
+          telemetry,
+        ), {
           headers: copyHeaders(response.headers),
           status: response.status,
           statusText: response.statusText,
@@ -150,8 +164,9 @@ export async function proxyOpenAiJson(
     }
   }
 
-  finish();
-  return makeProxyError(503, `All upstreams failed for ${model}: ${errors.join(' | ')}`);
+  const message = `All upstreams failed for ${model}: ${errors.join(' | ')}`;
+  finish(message);
+  return makeProxyError(503, message);
 }
 
 function clientClosedResponse(): Response {
