@@ -7,11 +7,11 @@ Local Model Gateway is lightweight local AI workstation management.
 One endpoint, scheduler, and dashboard for coordinating model access across
 local agents and LLM apps.
 
-It exposes a stable OpenAI-compatible API and a Streamable HTTP MCP endpoint,
-then puts all GPU-bound work behind one SQLite-backed scheduler. Agents can ask
-for Qwen, MiniMax, a LoRA job, or another local runtime through the same gateway
-without racing each other, double-loading models, or bypassing load/unload
-decisions.
+It exposes local OpenAI-compatible HTTP routes and a Streamable HTTP MCP
+endpoint, then puts all GPU-bound work behind one SQLite-backed scheduler.
+Agents can ask for Qwen, MiniMax, a LoRA job, or another local runtime through
+the same gateway without racing each other, double-loading models, or bypassing
+load/unload decisions.
 
 Works with:
 
@@ -60,7 +60,7 @@ dashboard.
 
 Local Model Gateway is:
 
-- a local model gateway for OpenAI-compatible clients
+- a local model gateway with OpenAI-compatible routes for supported request shapes
 - a shared scheduler for GPU-bound local model work
 - a runtime residency manager for loading, unloading, and swapping local models
 - a browser dashboard for seeing runtime activity
@@ -81,7 +81,7 @@ multiple local agents and LLM apps at the same time.
 
 | Capability | What it does |
 | --- | --- |
-| OpenAI-compatible API | Drop-in `/v1/chat/completions`, `/v1/responses`, `/v1/audio/speech`, and `/v1/models` routes for local agents. |
+| OpenAI-compatible API | `/v1/chat/completions`, `/v1/responses`, `/v1/audio/speech`, and `/v1/models` routes for supported local request shapes. |
 | MCP endpoint | Runtime control and setup tools over Streamable HTTP at `/mcp`. |
 | Durable GPU queue | SQLite-backed priority/FIFO work admission across URL and MCP entrypoints. |
 | Runtime residency | Starts, health-checks, unloads, and swaps managed local runtimes on demand. |
@@ -246,11 +246,14 @@ curl http://127.0.0.1:8787/v1/chat/completions \
   }'
 ```
 
-Audio-capable managed runtimes also accept non-streaming WAV requests through
-`POST /v1/audio/speech`. See [Music Generation](docs/music-generation.md) for
-the request shape and the
+Audio-capable managed runtimes also accept the experimental, non-streaming WAV
+route `POST /v1/audio/speech`. Requests must include non-blank `input` and
+`instructions`, and the selected runtime must declare `supports_audio: true`.
+The gateway routes the request to that runtime and returns its binary audio
+response. See [Managed Music Generation](docs/music-generation.md) for the
+request shape and the
 [MiniMax Music 3 adapter](examples/runtime-adapters/minimax-music3/README.md)
-for a tested local setup.
+for the experimental Apple Silicon setup.
 
 ### MCP
 
@@ -349,6 +352,10 @@ npx local-model-gateway recipes show hermes
 surface and reports actionable fixes for missing dependencies, occupied ports,
 bad service scripts, sibling gateways, direct `llama.cpp` bypasses, gateway
 endpoints, and invalid config.
+
+On macOS, `service install` preflights the exact Node executable and gateway
+entrypoint before it replaces the launchd service state. The preflight is
+separate from the read-only `doctor` report.
 
 ## Packages
 

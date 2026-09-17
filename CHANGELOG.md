@@ -2,34 +2,73 @@
 
 All notable changes to Local Model Gateway are documented here.
 
-## [0.5.0] - 2026-08-14
+## [0.5.0] - Unreleased
+
+Version 0.5.0 is an unreleased release candidate. See the
+[release notes](docs/releases/v0.5.0.md) for the upgrade checklist and current
+verification status.
 
 ### Added
 
-- Managed, OpenAI-compatible `POST /v1/audio/speech` proxying with shared GPU
-  admission, cancellation, history, and binary WAV passthrough.
-- `supports_audio` managed-runtime capability metadata in config, status, runtime
-  discovery, and the well-known manifest.
-- An experimental MiniMax Music 3 macOS/MPS runtime adapter and setup guide.
+- Added the experimental managed `POST /v1/audio/speech` route. It requires a
+  managed runtime with `supports_audio: true`, non-blank `input` and
+  `instructions`, and currently returns non-streaming WAV data.
+- Added `supports_audio` capability metadata to managed-runtime config, status,
+  model discovery, and the well-known manifest.
+- Added the experimental MiniMax Music 3 macOS/MPS runtime adapter and setup
+  documentation.
 
 ### Changed
 
-- Audio requests are rejected unless the selected managed runtime explicitly
-  declares `supports_audio: true`.
+- MiniMax Music 3 now generates each request in one native pass with a
+  preallocated language-model KV cache. `min_audio_duration` controls when the
+  end-of-audio token may be sampled, while `audio_duration` remains the maximum
+  target duration.
+- Managed upstream proxying now applies the configured runtime timeout to both
+  response headers and body transfer, which supports long audio responses.
+- Request history and telemetry now preserve the first terminal outcome. Late
+  upstream callbacks cannot rewrite a completed, failed, or cancelled work
+  item.
+- Active prefill telemetry now requires fresh progress from the current request;
+  stale progress from an earlier request is suppressed.
+- Aborted or timed-out upstream response bodies now release GPU admission even
+  when the response is never read.
+- macOS `service install` now preflights the exact Node executable and gateway
+  entrypoint before replacing launchd state.
+- The macOS llama-server adapter now understands modern and legacy slot
+  telemetry, writes progress atomically, prevents prefill telemetry from
+  regressing after generation begins, and handles quoted environment paths and
+  empty extra-argument lists.
 
 ### Fixed
 
-- Long-running audio requests now use the managed runtime timeout for response
-  headers and body transfer instead of failing at the HTTP client's shorter
-  default header timeout.
-- Managed runtime proxy failures are recorded as failed work rather than
-  successful work, and cancelled MiniMax adapter responses no longer emit a
-  second error over a closed connection.
-- MiniMax Music 3 now performs long MPS generations in one native pass with a
-  preallocated KV cache and an optional minimum duration, replacing stitched
-  sections and crossfades.
+- Fixed managed proxy history that could record an HTTP or transport failure as
+  successful work.
+- Fixed cancellation handling so a closed client request is recorded as
+  cancelled without a second response being written after the connection ends.
+- Fixed blank audio fields being admitted to the queue; MiniMax now rejects
+  non-loopback hosts before GPU/model imports and invalid numeric, integer,
+  positive-step, or seed-range values before each generation.
+- Fixed MiniMax launchd plist generation to XML-escape paths and lint the
+  temporary plist before replacing the existing service definition.
 
-[0.5.0]: https://github.com/vstep1/local-model-gateway/compare/v0.4.0...v0.5.0
+### Security and maintenance
+
+- Updated the dependency lockfile for security remediation and kept generated
+  Python bytecode out of the repository.
+
+### Upgrade notes
+
+- Existing experimental MiniMax installs must refresh the copied adapter files
+  from [the repository example](examples/runtime-adapters/minimax-music3/README.md),
+  including `server.py` and the new `request_validation.py`, before restarting
+  the runtime.
+- Use Node.js 22, then run `npm install`, `npm run build`, and
+  `npx local-model-gateway doctor --json` after updating. If the doctor report
+  has top-level `status: fail`, follow its read-only `doctor --fix-plan` output.
+- Updating files and running the doctor does not automatically restart the
+  gateway or runtime. Restart services explicitly when the local installation
+  is ready.
 
 ## v0.4.0 - 2026-05-31
 
@@ -79,3 +118,5 @@ All notable changes to Local Model Gateway are documented here.
 ### Added
 
 - Published the initial public-ready workspace with the OpenAI-compatible gateway, shared GPU coordinator, MCP runtime tools, lazy MCP broker, runtime adapter examples, and demo assets.
+
+[0.5.0]: https://github.com/vstep1/local-model-gateway/compare/v0.4.0...HEAD
