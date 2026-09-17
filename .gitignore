@@ -39,3 +39,7 @@ local-model-gateway.config.yaml.pre-*
 .DS_Store
 .idea/
 .vscode/
+
+# Python
+__pycache__/
+*.py[cod]

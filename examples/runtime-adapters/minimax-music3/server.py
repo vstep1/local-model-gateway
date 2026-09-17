@@ -12,6 +12,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from request_validation import parse_generation_parameters, validate_loopback_host
+
+
+HOST = validate_loopback_host(os.environ.get("MINIMAX_MUSIC3_HOST", "127.0.0.1"))
+PORT = int(os.environ.get("MINIMAX_MUSIC3_PORT", "18009"))
+
+# Keep host validation ahead of imports that can initialize GPU-backed libraries.
 import soundfile as sf
 import torch
 from audio_utils import ensure_minimum_samples, to_samples_channels
@@ -20,8 +27,6 @@ from diffusers import ModularPipeline
 from duration_control import suppress_early_audio_end
 
 
-HOST = os.environ.get("MINIMAX_MUSIC3_HOST", "127.0.0.1")
-PORT = int(os.environ.get("MINIMAX_MUSIC3_PORT", "18009"))
 MODEL_PATH = Path(os.environ["MINIMAX_MUSIC3_MODEL_PATH"]).expanduser().resolve()
 MODEL_ID = "MiniMaxAI/MiniMax-Music3"
 MODEL_ALIAS = "minimax-music3"
@@ -150,18 +155,12 @@ class Handler(BaseHTTPRequestHandler):
             if request.get("response_format", "wav") != "wav":
                 raise ValueError("only response_format=wav is supported")
 
-            frames = int(request.get("max_new_tokens", 250))
-            duration = float(request.get("audio_duration", frames / 25.0))
-            duration = min(max(duration, 0.04), 360.0)
-            minimum_duration = float(request.get("min_audio_duration", duration))
-            minimum_duration = min(max(minimum_duration, 0.0), duration)
-            steps = int(request.get("num_inference_steps", 30))
-            seed = int(request.get("seed", 0))
-            max_frames = int(duration * PIPE.frame_rate)
-            minimum_frames = int(minimum_duration * PIPE.frame_rate)
+            parameters = parse_generation_parameters(request)
+            max_frames = int(parameters.audio_duration * PIPE.frame_rate)
+            minimum_frames = int(parameters.min_audio_duration * PIPE.frame_rate)
 
             with GENERATION_LOCK:
-                generator = torch.Generator("cpu").manual_seed(seed)
+                generator = torch.Generator("cpu").manual_seed(parameters.seed)
                 with (
                     preallocated_kv_cache(
                         PIPE.language_model.model,
@@ -176,16 +175,18 @@ class Handler(BaseHTTPRequestHandler):
                     audio = PIPE(
                         prompt=prompt,
                         lyrics=lyrics,
-                        audio_duration=duration,
+                        audio_duration=parameters.audio_duration,
                         generator=generator,
-                        num_inference_steps=steps,
+                        num_inference_steps=parameters.num_inference_steps,
                         output="audios",
                         output_type="np",
                     )[0]
                 samples = to_samples_channels(audio)
                 samples = ensure_minimum_samples(
                     samples,
-                    minimum_samples=round(minimum_duration * SAMPLING_RATE),
+                    minimum_samples=round(
+                        parameters.min_audio_duration * SAMPLING_RATE
+                    ),
                 )
                 if DEVICE.type == "mps":
                     torch.mps.empty_cache()

@@ -12,27 +12,35 @@ DOMAIN="gui/$(id -u)"
 PLIST="${HOME}/Library/LaunchAgents/${LABEL}.plist"
 LOG_DIR="${HOME}/Library/Logs/local-model-gateway/minimax-music3"
 
+xml_escape() {
+  printf '%s' "$1" | sed \
+    -e 's/&/\&amp;/g' \
+    -e 's/</\&lt;/g' \
+    -e 's/>/\&gt;/g'
+}
+
 write_plist() {
   mkdir -p "$(dirname "${PLIST}")" "${LOG_DIR}"
   local temporary="${PLIST}.tmp"
-  sed \
-    -e "s|__LABEL__|${LABEL}|g" \
-    -e "s|__PYTHON__|${PYTHON}|g" \
-    -e "s|__SERVER__|${SERVER}|g" \
-    -e "s|__MODEL_PATH__|${MODEL_PATH}|g" \
-    -e "s|__PROGRESS_PATH__|${PROGRESS_PATH}|g" \
-    -e "s|__LOG_DIR__|${LOG_DIR}|g" >"${temporary}" <<'PLIST_EOF'
+  local label_xml python_xml server_xml model_path_xml progress_path_xml log_dir_xml
+  label_xml="$(xml_escape "${LABEL}")"
+  python_xml="$(xml_escape "${PYTHON}")"
+  server_xml="$(xml_escape "${SERVER}")"
+  model_path_xml="$(xml_escape "${MODEL_PATH}")"
+  progress_path_xml="$(xml_escape "${PROGRESS_PATH}")"
+  log_dir_xml="$(xml_escape "${LOG_DIR}")"
+  cat >"${temporary}" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>__LABEL__</string>
+  <key>Label</key><string>${label_xml}</string>
   <key>ProgramArguments</key>
-  <array><string>__PYTHON__</string><string>__SERVER__</string></array>
+  <array><string>${python_xml}</string><string>${server_xml}</string></array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>MINIMAX_MUSIC3_MODEL_PATH</key><string>__MODEL_PATH__</string>
-    <key>MINIMAX_MUSIC3_PROGRESS_PATH</key><string>__PROGRESS_PATH__</string>
+    <key>MINIMAX_MUSIC3_MODEL_PATH</key><string>${model_path_xml}</string>
+    <key>MINIMAX_MUSIC3_PROGRESS_PATH</key><string>${progress_path_xml}</string>
     <key>MINIMAX_MUSIC3_HOST</key><string>127.0.0.1</string>
     <key>MINIMAX_MUSIC3_PORT</key><string>18009</string>
     <key>MINIMAX_MUSIC3_DEVICE</key><string>mps</string>
@@ -40,16 +48,18 @@ write_plist() {
     <key>PYTORCH_ENABLE_MPS_FALLBACK</key><string>1</string>
     <key>HF_HUB_OFFLINE</key><string>1</string>
   </dict>
-  <key>WorkingDirectory</key><string>__MODEL_PATH__</string>
-  <key>StandardOutPath</key><string>__LOG_DIR__/stdout.log</string>
-  <key>StandardErrorPath</key><string>__LOG_DIR__/stderr.log</string>
+  <key>WorkingDirectory</key><string>${model_path_xml}</string>
+  <key>StandardOutPath</key><string>${log_dir_xml}/stdout.log</string>
+  <key>StandardErrorPath</key><string>${log_dir_xml}/stderr.log</string>
   <key>ProcessType</key><string>Interactive</string>
   <key>RunAtLoad</key><true/>
 </dict>
 </plist>
 PLIST_EOF
+  # Validate before replacing an existing plist. A bad path or value must not
+  # take down a previously healthy launchd configuration.
+  plutil -lint "${temporary}" >/dev/null
   mv "${temporary}" "${PLIST}"
-  plutil -lint "${PLIST}" >/dev/null
 }
 
 case "${1:-status}" in

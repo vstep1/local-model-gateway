@@ -30,6 +30,7 @@ cp examples/runtime-adapters/minimax-music3/server.py runtime/minimax-music3/
 cp examples/runtime-adapters/minimax-music3/audio_utils.py runtime/minimax-music3/
 cp examples/runtime-adapters/minimax-music3/cache_control.py runtime/minimax-music3/
 cp examples/runtime-adapters/minimax-music3/duration_control.py runtime/minimax-music3/
+cp examples/runtime-adapters/minimax-music3/request_validation.py runtime/minimax-music3/
 cp examples/runtime-adapters/minimax-music3/requirements.txt runtime/minimax-music3/
 cp examples/runtime-adapters/minimax-music3/minimax-music3-service.sh runtime/
 chmod +x runtime/minimax-music3-service.sh
@@ -108,7 +109,8 @@ The dashboard converts its length field using the same ratio.
 
 ## Adapter contract
 
-- The adapter binds only to `127.0.0.1:18009`.
+- The adapter accepts only IPv4 loopback hosts (`127.0.0.0/8`), defaulting to
+  `127.0.0.1:18009`; IPv6 and non-loopback host values fail before model load.
 - The launchd label is `ai.local.runtime.minimax-music3`.
 - The gateway owns admission at `127.0.0.1:8787/v1`; do not send normal client
   traffic directly to port 18009.
