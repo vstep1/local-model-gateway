@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { describe, it } from 'node:test';
-import { makeProxyError, OpenAiUpstreamPool } from '../src/openai-upstreams.js';
+import {
+  makeProxyError,
+  OpenAiUpstreamPool,
+  proxyOpenAiJson,
+  type ProxyCompletionOutcome,
+} from '../src/openai-upstreams.js';
 
 async function withServer(
   handler: http.RequestListener,
@@ -186,5 +191,49 @@ describe('OpenAI upstream proxying', () => {
     const error = makeProxyError(429, 'queue full');
     assert.equal(error.status, 429);
     assert.match(await error.text(), /rate_limit_error/);
+  });
+
+  it('classifies a client-aborted non-success stream as cancelled', async () => {
+    const originalFetch = globalThis.fetch;
+    let completion: { errorText?: string; outcome?: ProxyCompletionOutcome } | undefined;
+    globalThis.fetch = (async () => new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('partial error'));
+        },
+      }),
+      { status: 400, statusText: 'Bad Request' },
+    )) as typeof fetch;
+
+    try {
+      const abortController = new AbortController();
+      const response = await proxyOpenAiJson(
+        [{
+          apiKey: '',
+          apiKeyEnv: '',
+          baseUrl: 'http://127.0.0.1:1',
+          models: ['model'],
+          name: 'upstream',
+          timeoutMs: 1000,
+          upstreamModel: 'model',
+        }],
+        '/chat/completions',
+        {},
+        'model',
+        abortController.signal,
+        (errorText, outcome) => {
+          completion = { errorText, outcome };
+        },
+      );
+      const reader = response.body?.getReader();
+      assert.ok(reader);
+      assert.equal((await reader.read()).done, false);
+      abortController.abort(new Error('client cancelled'));
+
+      assert.deepEqual(completion, { errorText: undefined, outcome: 'cancelled' });
+      await reader.cancel('test cleanup');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

@@ -435,6 +435,104 @@ describe('gpu coordinator', () => {
     }
   });
 
+  it('surfaces fresh current-request prefill after first byte but suppresses prior and terminal progress', async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    let resolveController!: (controller: ReadableStreamDefaultController<Uint8Array>) => void;
+    const controllerReady = new Promise<ReadableStreamDefaultController<Uint8Array>>((resolve) => {
+      resolveController = resolve;
+    });
+    globalThis.fetch = (async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          streamController = controller;
+          resolveController(controller);
+          controller.enqueue(encoder.encode('first byte'));
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' }, status: 200 });
+    }) as typeof fetch;
+
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-prefill-heartbeat-'));
+    const progressPath = path.join(root, 'qwen-progress.json');
+    const store = createStore();
+    const { hooks } = createHooks(['qwen3-32b']);
+    const coordinator = new GpuCoordinator(
+      [{ ...runtime('qwen3-32b', 'http://127.0.0.1:1/v1'), loadProgressPath: progressPath }],
+      store,
+      hooks,
+    );
+
+    try {
+      const priorUpdatedAt = new Date().toISOString();
+      await fs.writeFile(
+        progressPath,
+        JSON.stringify({ prefill_progress: 0.25, prefill_task_id: 12, updated_at: priorUpdatedAt }),
+        'utf8',
+      );
+      await sleep(20);
+
+      const response = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'prefill heartbeat', role: 'user' }], model: 'qwen3-32b', stream: true },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+      const beforeFirstByte = coordinator.status().active_work[0];
+      assert.equal(beforeFirstByte?.phase, 'streaming');
+      assert.equal(beforeFirstByte?.prefillProgress, null);
+      const reader = response.body?.getReader();
+      assert.ok(reader);
+      assert.equal((await reader.read()).done, false);
+      await controllerReady;
+
+      const prior = coordinator.status().active_work[0];
+      assert.equal(prior?.phase, 'streaming');
+      assert.equal(prior?.prefillProgress, null);
+      const firstByte = prior?.timeToFirstByteMs;
+
+      await fs.writeFile(
+        progressPath,
+        JSON.stringify({
+          prefill_progress: 0.5,
+          prefill_task_id: 87,
+          prefill_tokens_done: 4096,
+          prefill_tokens_total: 8192,
+          updated_at: new Date().toISOString(),
+        }),
+        'utf8',
+      );
+      const current = coordinator.status().active_work[0];
+      assert.equal(current?.phase, 'prefill');
+      assert.equal(current?.prefillProgress, 0.5);
+      assert.equal(current?.prefillTaskId, 87);
+      assert.equal(current?.prefillInputDone, 4096);
+      assert.equal(current?.prefillInputTotal, 8192);
+      assert.equal(current?.timeToFirstByteMs, firstByte);
+
+      streamController.close();
+      assert.equal((await reader.read()).done, true);
+      await waitFor(() => coordinator.status().managed_runtimes[0].activeRequests === 0);
+
+      await fs.writeFile(
+        progressPath,
+        JSON.stringify({ prefill_progress: 0.4, prefill_task_id: 88, updated_at: new Date().toISOString() }),
+        'utf8',
+      );
+      const terminal = coordinator.status().recent_work[0];
+      assert.equal(terminal?.state, 'succeeded');
+      assert.equal(terminal?.phase, 'completed');
+      assert.equal(terminal?.prefillProgress, null);
+      assert.equal(terminal?.prefillTaskId, null);
+    } finally {
+      globalThis.fetch = originalFetch;
+      store.close();
+      await fs.rm(root, { force: true, recursive: true });
+    }
+  });
+
   it('does not coerce null runtime telemetry values to zero progress', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'local-model-null-progress-'));
     const progressPath = path.join(root, 'qwen-progress.json');
@@ -577,10 +675,370 @@ describe('gpu coordinator', () => {
         5,
         'managed runtime lease was not released after stream close',
       );
+      const completed = coordinator.status().recent_work[0];
+      assert.equal(completed?.state, 'succeeded');
+      assert.equal(completed?.phase, 'completed');
+      const elapsed = completed?.upstreamElapsedMs;
+      const bandwidth = completed?.bandwidthBps;
+      await sleep(40);
+      const stable = coordinator.status().recent_work[0];
+      assert.equal(stable?.upstreamElapsedMs, elapsed);
+      assert.equal(stable?.bandwidthBps, bandwidth);
     } finally {
       store.close();
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it('fails a managed stream on an upstream read error and releases the lease', async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+    let fetchCount = 0;
+    let resolveBodyController!: (controller: ReadableStreamDefaultController<Uint8Array>) => void;
+    const bodyController = new Promise<ReadableStreamDefaultController<Uint8Array>>((resolve) => {
+      resolveBodyController = resolve;
+    });
+    globalThis.fetch = (async () => {
+      fetchCount += 1;
+      if (fetchCount > 1) return new Response('next response', { status: 200 });
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          resolveBodyController(controller);
+          controller.enqueue(encoder.encode('partial response'));
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' }, status: 200 });
+    }) as typeof fetch;
+
+    const store = createStore();
+    const { hooks } = createHooks(['qwen3-32b']);
+    const coordinator = new GpuCoordinator(
+      [runtime('qwen3-32b', 'http://127.0.0.1:1/v1')],
+      store,
+      hooks,
+    );
+
+    try {
+      const first = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'partial', role: 'user' }], model: 'qwen3-32b', stream: true },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+      const reader = first.body?.getReader();
+      assert.ok(reader);
+      assert.equal((await reader.read()).done, false);
+      (await bodyController).error(new Error('upstream stream broke'));
+      await assert.rejects(reader.read(), /upstream stream broke/);
+      await waitFor(() => coordinator.status().managed_runtimes[0].activeRequests === 0);
+
+      const failed = coordinator.status().recent_work[0];
+      assert.equal(failed?.state, 'failed');
+      assert.equal(failed?.phase, 'failed');
+      assert.match(failed?.errorText ?? '', /upstream stream broke/);
+
+      const next = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'next', role: 'user' }], model: 'qwen3-32b' },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+      assert.equal(await next.text(), 'next response');
+      assert.equal(fetchCount, 2);
+      assert.equal(coordinator.status().managed_runtimes[0].activeRequests, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      store.close();
+    }
+  });
+
+  it('marks an aborted client stream cancelled and unblocks the next request', async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+    let fetchCount = 0;
+    globalThis.fetch = (async (_input, init) => {
+      fetchCount += 1;
+      if (fetchCount > 1) return new Response('next response', { status: 200 });
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode('partial response'));
+          init?.signal?.addEventListener('abort', () => {
+            controller.error(init.signal?.reason ?? new DOMException('aborted', 'AbortError'));
+          }, { once: true });
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' }, status: 200 });
+    }) as typeof fetch;
+
+    const store = createStore();
+    const { hooks } = createHooks(['qwen3-32b']);
+    const coordinator = new GpuCoordinator(
+      [runtime('qwen3-32b', 'http://127.0.0.1:1/v1')],
+      store,
+      hooks,
+    );
+
+    try {
+      const abortController = new AbortController();
+      const first = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'cancel', role: 'user' }], model: 'qwen3-32b', stream: true },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+        abortController.signal,
+      );
+      const reader = first.body?.getReader();
+      assert.ok(reader);
+      assert.equal((await reader.read()).done, false);
+      abortController.abort(new Error('client cancelled'));
+      await assert.rejects(reader.read());
+      await waitFor(() => coordinator.status().managed_runtimes[0].activeRequests === 0);
+
+      const cancelled = coordinator.status().recent_work[0];
+      assert.equal(cancelled?.state, 'cancelled');
+      assert.equal(cancelled?.phase, 'cancelled');
+
+      const next = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'next', role: 'user' }], model: 'qwen3-32b' },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+      assert.equal(await next.text(), 'next response');
+      assert.equal(fetchCount, 2);
+      assert.equal(coordinator.status().managed_runtimes[0].activeRequests, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      store.close();
+    }
+  });
+
+  it('marks a consumer-cancelled pending read cancelled exactly once and unblocks the next request', async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount += 1;
+      if (fetchCount > 1) return new Response('next response', { status: 200 });
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode('partial response'));
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' }, status: 200 });
+    }) as typeof fetch;
+
+    const store = createStore();
+    const { hooks } = createHooks(['qwen3-32b']);
+    const coordinator = new GpuCoordinator(
+      [runtime('qwen3-32b', 'http://127.0.0.1:1/v1')],
+      store,
+      hooks,
+    );
+
+    try {
+      const first = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'consumer cancel', role: 'user' }], model: 'qwen3-32b', stream: true },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+      const reader = first.body?.getReader();
+      assert.ok(reader);
+      assert.equal((await reader.read()).done, false);
+      const workItemId = coordinator.status().active_work[0]?.id;
+      assert.ok(workItemId);
+
+      const pendingRead = reader.read();
+      await sleep(0);
+      await reader.cancel('consumer cancelled');
+      await pendingRead;
+      await waitFor(() => coordinator.status().managed_runtimes[0].activeRequests === 0);
+
+      const cancelled = coordinator.status().recent_work[0];
+      assert.equal(cancelled?.state, 'cancelled');
+      assert.equal(cancelled?.phase, 'cancelled');
+      const terminalEvents = coordinator.status().runtime_timeline.filter((event) => (
+        event.workItemId === workItemId && event.eventType === 'work_cancelled'
+      ));
+      assert.equal(terminalEvents.length, 1);
+
+      const next = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'next', role: 'user' }], model: 'qwen3-32b' },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+      assert.equal(await next.text(), 'next response');
+      assert.equal(fetchCount, 2);
+      assert.equal(coordinator.status().managed_runtimes[0].activeRequests, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      store.close();
+    }
+  });
+
+  it('keeps cancelled telemetry terminal when an upstream chunk arrives late', async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+    let pulls = 0;
+    let releaseLate: (() => void) | null = null;
+    globalThis.fetch = async () => {
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls += 1;
+          if (pulls === 1) {
+            controller.enqueue(encoder.encode('first'));
+            return;
+          }
+          if (pulls === 2) {
+            return new Promise<void>((resolve) => {
+              releaseLate = () => {
+                controller.enqueue(encoder.encode('late'));
+                resolve();
+              };
+            });
+          }
+          controller.close();
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' }, status: 200 });
+    };
+
+    const store = createStore();
+    const { hooks } = createHooks(['qwen3-32b']);
+    const coordinator = new GpuCoordinator(
+      [runtime('qwen3-32b', 'http://127.0.0.1:1/v1')],
+      store,
+      hooks,
+    );
+
+    try {
+      const abortController = new AbortController();
+      const response = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'late telemetry', role: 'user' }], model: 'qwen3-32b', stream: true },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+        abortController.signal,
+      );
+      const reader = response.body?.getReader();
+      assert.ok(reader);
+      const first = await reader.read();
+      assert.equal(first.done, false);
+      const workItemId = coordinator.status().active_work[0]?.id;
+      assert.ok(workItemId);
+
+      const pendingRead = reader.read();
+      await waitFor(() => Boolean(releaseLate));
+      await waitFor(() => coordinator.status().active_work[0]?.phase === 'streaming');
+      abortController.abort(new Error('client cancelled'));
+      assert.equal(coordinator.status().recent_work[0]?.phase, 'cancelled');
+
+      releaseLate!();
+      const late = await pendingRead;
+      assert.equal(late.done, false);
+      const cancelled = coordinator.status().recent_work[0];
+      assert.equal(cancelled?.id, workItemId);
+      assert.equal(cancelled?.state, 'cancelled');
+      assert.equal(cancelled?.phase, 'cancelled');
+      assert.equal(cancelled?.responseBytes, first.value?.byteLength);
+
+      await reader.cancel('test cleanup');
+      await waitFor(() => coordinator.status().managed_runtimes[0].activeRequests === 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+      store.close();
+    }
+  });
+
+  it('releases a stream lease when the client aborts without another body read', async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+    const abortController = new AbortController();
+    globalThis.fetch = (async () => new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode('partial response'));
+        },
+      }),
+      { headers: { 'content-type': 'text/event-stream' }, status: 200 },
+    )) as typeof fetch;
+
+    const store = createStore();
+    const { hooks } = createHooks(['qwen3-32b']);
+    const coordinator = new GpuCoordinator(
+      [runtime('qwen3-32b', 'http://127.0.0.1:1/v1')],
+      store,
+      hooks,
+    );
+
+    try {
+      const response = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'abort without reading', role: 'user' }], model: 'qwen3-32b', stream: true },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+        abortController.signal,
+      );
+      await waitFor(() => (coordinator.status().active_work[0]?.responseBytes ?? 0) > 0);
+      abortController.abort(new Error('client cancelled'));
+
+      await waitFor(() => coordinator.status().managed_runtimes[0].activeRequests === 0);
+      assert.equal(coordinator.status().recent_work[0]?.state, 'cancelled');
+      await response.body?.cancel('test cleanup');
+    } finally {
+      globalThis.fetch = originalFetch;
+      store.close();
+    }
+  });
+
+  it('releases a stream lease when the upstream timeout fires without another body read', async () => {
+    const originalFetch = globalThis.fetch;
+    const encoder = new TextEncoder();
+    globalThis.fetch = (async () => new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode('partial response'));
+        },
+      }),
+      { headers: { 'content-type': 'text/event-stream' }, status: 200 },
+    )) as typeof fetch;
+
+    const store = createStore();
+    const { hooks } = createHooks(['qwen3-32b']);
+    const coordinator = new GpuCoordinator(
+      [{ ...runtime('qwen3-32b', 'http://127.0.0.1:1/v1'), loadTimeoutMs: 30 }],
+      store,
+      hooks,
+    );
+
+    try {
+      const response = await coordinator.proxyChatCompletions(
+        { messages: [{ content: 'timeout without reading', role: 'user' }], model: 'qwen3-32b', stream: true },
+        'qwen3-32b',
+        'openai',
+        2,
+        1000,
+      );
+      await waitFor(() => (coordinator.status().active_work[0]?.responseBytes ?? 0) > 0);
+
+      await waitFor(() => coordinator.status().managed_runtimes[0].activeRequests === 0, 1000);
+      assert.equal(coordinator.status().recent_work[0]?.state, 'failed');
+      assert.match(coordinator.status().recent_work[0]?.errorText ?? '', /timeout/i);
+      await response.body?.cancel('test cleanup');
+    } finally {
+      globalThis.fetch = originalFetch;
+      store.close();
     }
   });
 

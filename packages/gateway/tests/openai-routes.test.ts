@@ -685,7 +685,7 @@ describe('openai-compatible routes', () => {
         body: JSON.stringify({
           input: '[Verse]\nA small test song',
           instructions: 'Warm acoustic pop.',
-          model: 'minimax-music3',
+          model: ' minimax-music3 ',
           response_format: 'wav',
           seed: 7,
           stream: false,
@@ -735,6 +735,49 @@ describe('openai-compatible routes', () => {
 
       assert.equal(res.status, 404);
       assert.match(await res.text(), /No managed audio runtime configured/);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it('rejects whitespace-only audio fields before GPU admission', async () => {
+    const harness = await createOpenAiApp();
+    try {
+      const coordinator = new GpuCoordinator(
+        [{ ...runtime('minimax-music3', 'http://127.0.0.1:18999/v1'), supportsAudio: true }],
+        harness.store,
+        {
+          isHealthy: async () => true,
+          runServiceCommand: async () => undefined,
+        },
+      );
+      const app = new Hono();
+      registerOpenAiRoutes(
+        app,
+        harness.scheduler,
+        harness.store.getRuntimeSettings(),
+        () => ['ep2', 'minimax-music3'],
+        undefined,
+        coordinator,
+      );
+
+      for (const field of ['input', 'instructions'] as const) {
+        const body = {
+          input: 'A test lyric',
+          instructions: 'Acoustic pop.',
+          model: 'minimax-music3',
+          [field]: '   ',
+        };
+        const res = await app.request('/v1/audio/speech', {
+          body: JSON.stringify(body),
+          headers: { 'content-type': 'application/json' },
+          method: 'POST',
+        });
+
+        assert.equal(res.status, 400);
+      }
+      assert.equal(coordinator.status().active_work.length, 0);
+      assert.equal(coordinator.status().recent_work.length, 0);
     } finally {
       await harness.cleanup();
     }

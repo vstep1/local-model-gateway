@@ -46,10 +46,15 @@ const responsesSchema = z
 
 const audioSpeechSchema = z
   .object({
-    input: z.string().min(1),
-    instructions: z.string().min(1),
+    input: z.string().refine((value) => value.trim().length > 0, 'input must be non-empty'),
+    instructions: z
+      .string()
+      .refine((value) => value.trim().length > 0, 'instructions must be non-empty'),
     max_queue_wait_ms: z.number().int().positive().optional(),
-    model: z.string().min(1),
+    model: z
+      .string()
+      .refine((value) => value.trim().length > 0, 'model must be non-empty')
+      .transform((value) => value.trim()),
     response_format: z.literal('wav').optional().default('wav'),
     stream: z.literal(false).optional().default(false),
   })

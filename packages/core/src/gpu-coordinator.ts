@@ -20,7 +20,12 @@ import {
   RuntimeTimelineEvent,
   RuntimeTimelineEventType,
 } from './types.js';
-import { makeProxyError, proxyOpenAiJson, type ProxyTelemetryCallbacks } from './openai-upstreams.js';
+import {
+  makeProxyError,
+  proxyOpenAiJson,
+  type ProxyCompletionOutcome,
+  type ProxyTelemetryCallbacks,
+} from './openai-upstreams.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -214,6 +219,7 @@ interface WorkTelemetry {
   requestBytes: number;
   responseBytes: number;
   upstreamName: string | null;
+  upstreamFinishedAt: string | null;
   upstreamStartedAt: string | null;
 }
 
@@ -656,8 +662,8 @@ export class GpuCoordinator {
         requestBody,
         model,
         lease.signal,
-        (errorText) => lease.release(
-          lease.signal.aborted ? 'cancelled' : errorText ? 'failed' : 'succeeded',
+        (errorText, outcome) => lease.release(
+          this.proxyCompletionState(lease.signal, errorText, outcome),
           errorText,
         ),
         telemetry,
@@ -672,6 +678,16 @@ export class GpuCoordinator {
       lease.release('failed', error instanceof Error ? error.message : String(error));
       throw error;
     }
+  }
+
+  private proxyCompletionState(
+    signal: AbortSignal,
+    errorText?: string,
+    outcome?: ProxyCompletionOutcome,
+  ): Exclude<GpuWorkState, 'queued' | 'running'> {
+    if (outcome === 'cancelled' || signal.aborted) return 'cancelled';
+    if (outcome === 'failed' || errorText) return 'failed';
+    return 'succeeded';
   }
 
   private acquire(type: GpuWorkKind, options: AcquireOptions): Promise<GpuLease> {
@@ -699,6 +715,7 @@ export class GpuCoordinator {
       requestBytes: 0,
       responseBytes: 0,
       upstreamName: null,
+      upstreamFinishedAt: null,
       upstreamStartedAt: null,
     });
     this.recordWorkTimeline(workItem, 'work_queued', `Queued ${workItem.model}`, {
@@ -1175,6 +1192,15 @@ export class GpuCoordinator {
   ): GpuWorkItem | null {
     const before = this.store.getGpuWorkItemById(workItemId);
     const finished = this.store.finishGpuWorkItem(workItemId, state, errorText);
+    if (finished) {
+      // finishGpuWorkItem returns the persisted row when another completion
+      // already won the race. Keep telemetry aligned with that terminal row,
+      // rather than allowing a late callback to overwrite its outcome.
+      const terminalState = finished.state === 'queued' || finished.state === 'running'
+        ? state
+        : finished.state;
+      this.finishTelemetry(workItemId, terminalState, finished.finishedAt);
+    }
     if (before && (before.state === 'queued' || before.state === 'running') && finished) {
       const category = failureCategory(state, errorText);
       this.recordWorkTimeline(
@@ -1327,17 +1353,33 @@ export class GpuCoordinator {
     }
 
     const startedAt = telemetry.upstreamStartedAt;
-    const elapsed = ageMs(startedAt);
+    const startedMs = startedAt ? Date.parse(startedAt) : Number.NaN;
+    const finishedMs = telemetry.upstreamFinishedAt ? Date.parse(telemetry.upstreamFinishedAt) : Number.NaN;
+    const elapsed = Number.isFinite(startedMs) && Number.isFinite(finishedMs)
+      ? Math.max(0, finishedMs - startedMs)
+      : ageMs(startedAt);
     const firstByte = telemetry.firstByteAt && startedAt
       ? Math.max(0, Date.parse(telemetry.firstByteAt) - Date.parse(startedAt))
       : null;
     const bytes = telemetry.requestBytes + telemetry.responseBytes;
     const seconds = elapsed && elapsed > 0 ? elapsed / 1000 : 0;
     const runtimeProgress = model ? runtimeTelemetry?.get(model.toLowerCase()) : undefined;
-    const includePrefill = telemetry.phase === 'prefill' && this.isFreshTelemetry(runtimeProgress?.telemetryUpdatedAt);
+    const progressUpdatedMs = runtimeProgress?.telemetryUpdatedAt
+      ? Date.parse(runtimeProgress.telemetryUpdatedAt)
+      : Number.NaN;
+    const prefillProgress = runtimeProgress?.prefillProgress ?? null;
+    const currentRequestProgress = !telemetry.upstreamFinishedAt
+      && prefillProgress !== null
+      && Number.isFinite(startedMs)
+      && Number.isFinite(progressUpdatedMs)
+      && progressUpdatedMs >= startedMs
+      && this.isFreshTelemetry(runtimeProgress?.telemetryUpdatedAt);
+    const currentRequestPrefill = currentRequestProgress && prefillProgress < 1;
+    const includePrefill = currentRequestProgress
+      && (currentRequestPrefill || telemetry.phase === 'prefill');
     return {
       bandwidthBps: seconds > 0 ? Math.round(bytes / seconds) : 0,
-      phase: telemetry.phase,
+      phase: currentRequestPrefill ? 'prefill' : telemetry.phase,
       prefillInputDone: includePrefill ? runtimeProgress?.prefillTokensDone ?? null : null,
       prefillInputTotal: includePrefill ? runtimeProgress?.prefillTokensTotal ?? null : null,
       prefillProgress: includePrefill ? runtimeProgress?.prefillProgress ?? null : null,
@@ -1359,13 +1401,29 @@ export class GpuCoordinator {
 
   private updateTelemetry(workItemId: string, patch: Partial<WorkTelemetry>): void {
     const telemetry = this.workTelemetry.get(workItemId);
-    if (!telemetry) return;
+    if (!telemetry || telemetry.upstreamFinishedAt) return;
     this.workTelemetry.set(workItemId, { ...telemetry, ...patch });
+  }
+
+  private finishTelemetry(
+    workItemId: string,
+    state: Exclude<GpuWorkState, 'queued' | 'running'>,
+    finishedAt: string | null,
+  ): void {
+    const telemetry = this.workTelemetry.get(workItemId);
+    if (!telemetry || telemetry.upstreamFinishedAt) return;
+    this.workTelemetry.set(workItemId, {
+      ...telemetry,
+      phase: telemetry.upstreamStartedAt
+        ? state === 'succeeded' ? 'completed' : state
+        : telemetry.phase,
+      upstreamFinishedAt: telemetry.upstreamStartedAt ? finishedAt : null,
+    });
   }
 
   private addResponseBytes(workItemId: string, bytes: number): void {
     const telemetry = this.workTelemetry.get(workItemId);
-    if (!telemetry) return;
+    if (!telemetry || telemetry.upstreamFinishedAt) return;
     this.workTelemetry.set(workItemId, {
       ...telemetry,
       phase: telemetry.firstByteAt ? 'streaming' : 'receiving',
@@ -1375,7 +1433,7 @@ export class GpuCoordinator {
 
   private markFirstByte(workItemId: string): void {
     const telemetry = this.workTelemetry.get(workItemId);
-    if (!telemetry) return;
+    if (!telemetry || telemetry.upstreamFinishedAt) return;
     this.workTelemetry.set(workItemId, {
       ...telemetry,
       firstByteAt: telemetry.firstByteAt ?? nowIso(),
@@ -1388,7 +1446,7 @@ export class GpuCoordinator {
       onFirstByte: () => this.markFirstByte(workItemId),
       onRequestBytes: (bytes) => {
         const telemetry = this.workTelemetry.get(workItemId);
-        if (!telemetry) return;
+        if (!telemetry || telemetry.upstreamFinishedAt) return;
         this.workTelemetry.set(workItemId, {
           ...telemetry,
           requestBytes: telemetry.requestBytes + bytes,

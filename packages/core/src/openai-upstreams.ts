@@ -3,6 +3,8 @@ import { Agent } from 'undici';
 
 const RETRYABLE_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 
+export type ProxyCompletionOutcome = 'succeeded' | 'failed' | 'cancelled';
+
 export interface ProxyTelemetryCallbacks {
   onFirstByte?: () => void;
   onRequestBytes?: (bytes: number) => void;
@@ -63,26 +65,26 @@ export async function proxyOpenAiJson(
   body: Record<string, unknown>,
   model: string,
   clientSignal?: AbortSignal,
-  onComplete?: (errorText?: string) => void,
+  onComplete?: (errorText?: string, outcome?: ProxyCompletionOutcome) => void,
   telemetry?: ProxyTelemetryCallbacks,
 ): Promise<Response> {
   let finished = false;
-  const finish = (errorText?: string) => {
+  const finish = (errorText?: string, outcome?: ProxyCompletionOutcome) => {
     if (finished) return;
     finished = true;
-    onComplete?.(errorText);
+    onComplete?.(errorText, outcome ?? (errorText ? 'failed' : 'succeeded'));
   };
 
   if (upstreams.length === 0) {
     const message = `No upstream configured for model: ${model}`;
-    finish(message);
+    finish(message, 'failed');
     return makeProxyError(404, message);
   }
 
   const errors: string[] = [];
   for (const upstream of upstreams) {
     if (clientSignal?.aborted) {
-      finish();
+      finish(undefined, 'cancelled');
       return clientClosedResponse();
     }
 
@@ -104,11 +106,11 @@ export async function proxyOpenAiJson(
       cleanedUp = true;
       clearTimeout(timeout);
       clientSignal?.removeEventListener('abort', abortUpstream);
-      void dispatcher.close();
+      void dispatcher.close().catch(() => undefined);
     };
-    const cleanupAndFinish = (errorText?: string) => {
+    const cleanupAndFinish = (errorText?: string, outcome?: ProxyCompletionOutcome) => {
       cleanup();
-      finish(errorText);
+      finish(errorText, outcome);
     };
     clientSignal?.addEventListener('abort', abortUpstream, { once: true });
 
@@ -137,7 +139,14 @@ export async function proxyOpenAiJson(
         return new Response(wrapResponseBody(
           response.body,
           controller,
-          () => cleanupAndFinish(responseError),
+          (errorText, outcome) => {
+            const cancelled = outcome === 'cancelled';
+            cleanupAndFinish(
+              cancelled ? undefined : errorText ?? responseError,
+              cancelled ? 'cancelled' : responseError ? 'failed' : outcome,
+            );
+          },
+          clientSignal,
           telemetry,
         ), {
           headers: copyHeaders(response.headers),
@@ -150,14 +159,14 @@ export async function proxyOpenAiJson(
       telemetry?.onResponseBytes?.(byteLength(text));
       cleanup();
       if (clientSignal?.aborted) {
-        finish();
+        finish(undefined, 'cancelled');
         return clientClosedResponse();
       }
       errors.push(`${upstream.name}: HTTP ${response.status}${text ? ` ${text.slice(0, 300)}` : ''}`);
     } catch (error) {
       cleanup();
       if (clientSignal?.aborted) {
-        finish();
+        finish(undefined, 'cancelled');
         return clientClosedResponse();
       }
       errors.push(`${upstream.name}: ${describeProxyError(error)}`);
@@ -165,7 +174,7 @@ export async function proxyOpenAiJson(
   }
 
   const message = `All upstreams failed for ${model}: ${errors.join(' | ')}`;
-  finish(message);
+  finish(message, 'failed');
   return makeProxyError(503, message);
 }
 
@@ -176,22 +185,61 @@ function clientClosedResponse(): Response {
 function wrapResponseBody(
   body: ReadableStream<Uint8Array> | null,
   upstreamController: AbortController,
-  cleanup: () => void,
+  onComplete: (errorText?: string, outcome?: ProxyCompletionOutcome) => void,
+  clientSignal: AbortSignal | undefined,
   telemetry?: ProxyTelemetryCallbacks,
 ): ReadableStream<Uint8Array> | null {
   if (!body) {
-    cleanup();
+    onComplete(
+      undefined,
+      clientSignal?.aborted
+        ? 'cancelled'
+        : upstreamController.signal.aborted
+          ? 'failed'
+          : 'succeeded',
+    );
     return null;
   }
 
   const reader = body.getReader();
   let sawFirstByte = false;
+  let consumerCancelled = false;
+  let completed = false;
+  const complete = (errorText?: string, outcome?: ProxyCompletionOutcome) => {
+    if (completed) return;
+    completed = true;
+    clientSignal?.removeEventListener('abort', onClientAbort);
+    upstreamController.signal.removeEventListener('abort', onUpstreamAbort);
+    onComplete(errorText, outcome);
+  };
+  const onClientAbort = () => {
+    if (!upstreamController.signal.aborted) {
+      upstreamController.abort(clientSignal?.reason ?? new Error('Client request aborted'));
+    }
+    complete(undefined, 'cancelled');
+  };
+  const onUpstreamAbort = () => {
+    const cancelled = consumerCancelled || clientSignal?.aborted === true;
+    complete(
+      cancelled ? undefined : describeProxyError(upstreamController.signal.reason),
+      cancelled ? 'cancelled' : 'failed',
+    );
+  };
+  clientSignal?.addEventListener('abort', onClientAbort, { once: true });
+  upstreamController.signal.addEventListener('abort', onUpstreamAbort, { once: true });
+  if (clientSignal?.aborted || upstreamController.signal.aborted) {
+    if (clientSignal?.aborted && !upstreamController.signal.aborted) {
+      upstreamController.abort(clientSignal.reason ?? new Error('Client request aborted'));
+    }
+    onUpstreamAbort();
+  }
+
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
         const { done, value } = await reader.read();
         if (done) {
-          cleanup();
+          complete(undefined, consumerCancelled || clientSignal?.aborted ? 'cancelled' : 'succeeded');
           controller.close();
           return;
         }
@@ -202,16 +250,18 @@ function wrapResponseBody(
         telemetry?.onResponseBytes?.(value.byteLength);
         controller.enqueue(value);
       } catch (error) {
-        cleanup();
+        const cancelled = consumerCancelled || clientSignal?.aborted === true;
+        complete(cancelled ? undefined : describeProxyError(error), cancelled ? 'cancelled' : 'failed');
         controller.error(error);
       }
     },
     async cancel(reason) {
+      consumerCancelled = true;
       upstreamController.abort(reason);
       try {
         await reader.cancel(reason);
       } finally {
-        cleanup();
+        complete(undefined, 'cancelled');
       }
     },
   });
