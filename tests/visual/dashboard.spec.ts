@@ -1,10 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { argosScreenshot } from '@argos-ci/playwright';
 import { readFileSync } from 'node:fs';
 import { dashboardVisualScenarios, visualViewports } from '../../qa/visual/scenarios.js';
 import { startVisualFixtureServer, type VisualFixtureServer } from '../../qa/visual/visual-server.js';
 
-const argosCss = readFileSync(new URL('../../qa/visual/visual-mask.css', import.meta.url), 'utf8');
+const screenshotStyle = readFileSync(new URL('../../qa/visual/visual-mask.css', import.meta.url), 'utf8');
 
 let fixtureServer: VisualFixtureServer;
 
@@ -43,12 +42,13 @@ for (const scenario of dashboardVisualScenarios) {
       await page.getByRole('button', { name: 'Pause' }).click();
       await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
 
-      await argosScreenshot(page, `dashboard/${scenario.id}/${viewport.name}`, {
-        ariaSnapshot: viewport.name === 'desktop',
+      const screenshot = await page.screenshot({
         fullPage: true,
-        root: 'test-results/argos-screenshots',
-        tag: ['dashboard', scenario.tab, viewport.name, ...scenario.tags],
-        argosCSS: argosCss,
+        style: screenshotStyle,
+      });
+      await testInfo.attach(`dashboard-${scenario.id}-${viewport.name}`, {
+        body: screenshot,
+        contentType: 'image/png',
       });
     });
   }

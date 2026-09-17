@@ -39,6 +39,8 @@ verification status.
   telemetry, writes progress atomically, prevents prefill telemetry from
   regressing after generation begins, and handles quoted environment paths and
   empty extra-argument lists.
+- Visual QA now uses local Playwright reports and screenshot artifacts without
+  an external Argos dependency or upload step.
 
 ### Fixed
 

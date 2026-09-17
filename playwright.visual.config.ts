@@ -7,13 +7,7 @@ export default defineConfig({
   timeout: 30_000,
   reporter: [
     process.env.CI ? ['dot'] : ['list'],
-    [
-      '@argos-ci/playwright/reporter',
-      {
-        buildName: 'local-model-gateway-dashboard',
-        uploadToArgos: Boolean(process.env.CI),
-      },
-    ],
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
   ],
   use: {
     browserName: 'chromium',
