@@ -105,8 +105,12 @@ write_wrapper() {
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -f ${env_file_q} ]]; then
-  source ${env_file_q}
+runtime_env_file="\${LOCAL_MODEL_GATEWAY_RUNTIME_ENV:-}"
+if [[ -z "\${runtime_env_file}" ]]; then
+  runtime_env_file=${env_file_q}
+fi
+if [[ -f "\${runtime_env_file}" ]]; then
+  source "\${runtime_env_file}"
 fi
 
 extra_args=()
@@ -123,9 +127,20 @@ prefill_progress="null"
 prefill_task_id="null"
 prefill_tokens_done="null"
 prefill_tokens_total="null"
+prefill_phase="idle"
+generation_task_id="null"
 
 normalize_progress() {
   awk -v p="\$1" 'BEGIN { if (p > 1) p = p / 100; if (p < 0) p = 0; if (p > 1) p = 1; printf "%.4f", p }'
+}
+
+normalize_log_line() {
+  local raw="\$1"
+  if [[ "\${raw}" =~ ^[0-9]+([.][0-9]+)+[[:space:]]+[A-Z][[:space:]]+(.*) ]]; then
+    printf '%s' "\${BASH_REMATCH[2]}"
+  else
+    printf '%s' "\${raw}"
+  fi
 }
 
 write_telemetry() {
@@ -133,8 +148,11 @@ write_telemetry() {
     return
   fi
   mkdir -p "\$(dirname "\${progress_file}")"
+  local telemetry_tmp
+  telemetry_tmp="\$(mktemp "\${progress_file}.tmp.XXXXXX")"
   printf '{"load_phase":"%s","load_progress":%s,"prefill_progress":%s,"prefill_task_id":%s,"prefill_tokens_done":%s,"prefill_tokens_total":%s,"updated_at":"%s"}\n' \
-    "\${load_phase}" "\${load_progress}" "\${prefill_progress}" "\${prefill_task_id}" "\${prefill_tokens_done}" "\${prefill_tokens_total}" "\$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >"\${progress_file}"
+    "\${load_phase}" "\${load_progress}" "\${prefill_progress}" "\${prefill_task_id}" "\${prefill_tokens_done}" "\${prefill_tokens_total}" "\$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >"\${telemetry_tmp}"
+  mv -f "\${telemetry_tmp}" "\${progress_file}"
 }
 
 set_load_progress() {
@@ -144,6 +162,7 @@ set_load_progress() {
 }
 
 set_prefill_progress() {
+  prefill_phase="prefill"
   prefill_task_id="\$1"
   prefill_tokens_done="\$2"
   prefill_tokens_total="\$3"
@@ -152,11 +171,31 @@ set_prefill_progress() {
 }
 
 clear_prefill_progress() {
+  prefill_phase="idle"
   prefill_progress="null"
   prefill_task_id="null"
   prefill_tokens_done="null"
   prefill_tokens_total="null"
   write_telemetry
+}
+
+begin_prefill() {
+  prefill_phase="prefill"
+  generation_task_id="null"
+  prefill_task_id="\$1"
+  prefill_tokens_total="\${2:-null}"
+  prefill_tokens_done="0"
+  prefill_progress="0.0000"
+  write_telemetry
+}
+
+mark_generation() {
+  local task_id="\$1"
+  if [[ "\${prefill_phase}" == "prefill" && "\${prefill_task_id}" == "\${task_id}" ]]; then
+    generation_task_id="\${task_id}"
+    clear_prefill_progress
+    prefill_phase="generation"
+  fi
 }
 
 cmd=(
@@ -196,55 +235,62 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 while IFS= read -r line; do
-  if [[ "\${line}" == *"main: loading model"* ]]; then
+  semantic_line="\$(normalize_log_line "\${line}")"
+  if [[ "\${semantic_line}" == *"main: loading model"* ]]; then
     set_load_progress "loading_model" "0.0800"
-  elif [[ "\${line}" == *"common_init_result: fitting params"* ]]; then
+  elif [[ "\${semantic_line}" == *"common_init_result: fitting params"* ]]; then
     set_load_progress "fitting_memory" "0.1000"
-  elif [[ "\${line}" == *"load_tensors: loading model tensors"* ]]; then
+  elif [[ "\${semantic_line}" == *"load_tensors: loading model tensors"* ]]; then
     set_load_progress "loading_tensors" "0.1500"
-  elif [[ "\${line}" =~ load_tensors:.*offloaded[[:space:]]+([0-9]+)/([0-9]+)[[:space:]]+layers ]]; then
+  elif [[ "\${semantic_line}" =~ load_tensors:.*offloaded[[:space:]]+([0-9]+)/([0-9]+)[[:space:]]+layers ]]; then
     done_layers="\${BASH_REMATCH[1]}"
     total_layers="\${BASH_REMATCH[2]}"
     layer_progress="\$(awk -v done="\${done_layers}" -v total="\${total_layers}" 'BEGIN { if (total <= 0) total = 1; printf "%.4f", 0.20 + 0.20 * (done / total) }')"
     set_load_progress "offloading_layers" "\${layer_progress}"
-  elif [[ "\${line}" =~ ^[.]+$ ]]; then
-    dot_count="\${#line}"
+  elif [[ "\${semantic_line}" =~ ^[.]+$ ]]; then
+    dot_count="\${#semantic_line}"
     tensor_progress="\$(awk -v dots="\${dot_count}" 'BEGIN { p = dots / 100; if (p > 1) p = 1; printf "%.4f", 0.40 + 0.35 * p }')"
     set_load_progress "loading_tensors" "\${tensor_progress}"
-  elif [[ "\${line}" == *"llama_context: constructing llama_context"* ]]; then
+  elif [[ "\${semantic_line}" == *"llama_context: constructing llama_context"* ]]; then
     set_load_progress "allocating_context" "0.7800"
-  elif [[ "\${line}" == *"llama_kv_cache:"* ]]; then
+  elif [[ "\${semantic_line}" == *"llama_kv_cache:"* ]]; then
     set_load_progress "allocating_kv_cache" "0.8400"
-  elif [[ "\${line}" == *"sched_reserve:"* ]]; then
+  elif [[ "\${semantic_line}" == *"sched_reserve:"* ]]; then
     set_load_progress "reserving_scheduler" "0.9000"
-  elif [[ "\${line}" == *"srv    load_model: initializing slots"* ]]; then
+  elif [[ "\${semantic_line}" == *"srv    load_model: initializing slots"* ]]; then
     set_load_progress "initializing_slots" "0.9500"
-  elif [[ "\${line}" == *"main: model loaded"* ]]; then
+  elif [[ "\${semantic_line}" == *"main: model loaded"* ]]; then
     set_load_progress "model_loaded" "0.9800"
-  elif [[ "\${line}" == *"main: server is listening"* ]]; then
+  elif [[ "\${semantic_line}" == *"main: server is listening"* ]]; then
     set_load_progress "ready" "1.0000"
-  elif [[ "\${line}" =~ slot[[:space:]]+update_slots:.*task[[:space:]]+([0-9]+).*new[[:space:]]+prompt.*task.n_tokens[[:space:]]+=[[:space:]]+([0-9]+) ]]; then
-    prefill_task_id="\${BASH_REMATCH[1]}"
-    prefill_tokens_total="\${BASH_REMATCH[2]}"
-    prefill_tokens_done="0"
-    prefill_progress="0.0000"
-    write_telemetry
-  elif [[ "\${line}" =~ slot[[:space:]]+update_slots:.*task[[:space:]]+([0-9]+).*prompt[[:space:]]+processing[[:space:]]+progress.*n_tokens[[:space:]]+=[[:space:]]+([0-9]+).*progress[[:space:]]+=[[:space:]]+([0-9.]+) ]]; then
-    task_id="\${BASH_REMATCH[1]}"
-    tokens_done="\${BASH_REMATCH[2]}"
-    progress="\$(normalize_progress "\${BASH_REMATCH[3]}")"
-    tokens_total="\${prefill_tokens_total}"
-    if [[ "\${tokens_total}" == "null" || -z "\${tokens_total}" ]]; then
-      tokens_total="\$(awk -v done="\${tokens_done}" -v progress="\${progress}" 'BEGIN { if (progress <= 0) print "null"; else printf "%d", done / progress }')"
+  elif [[ "\${semantic_line}" =~ slot[[:space:]]+(update_slots|print_timing):.*task[[:space:]]+([0-9]+).*new[[:space:]]+prompt.*task[.]n_tokens[[:space:]]*=[[:space:]]*([0-9]+) ]]; then
+    begin_prefill "\${BASH_REMATCH[2]}" "\${BASH_REMATCH[3]}"
+  elif [[ "\${semantic_line}" =~ slot[[:space:]]+(update_slots|print_timing):.*task[[:space:]]+([0-9]+).*prompt[[:space:]]+processing.*n_tokens[[:space:]]*=[[:space:]]*([0-9]+).*progress[[:space:]]*=[[:space:]]*([0-9.]+) ]]; then
+    task_id="\${BASH_REMATCH[2]}"
+    tokens_done="\${BASH_REMATCH[3]}"
+    progress="\$(normalize_progress "\${BASH_REMATCH[4]}")"
+    if [[ "\${prefill_phase}" != "generation" || "\${generation_task_id}" != "\${task_id}" ]]; then
+      if [[ "\${prefill_task_id}" != "\${task_id}" ]]; then
+        prefill_tokens_total="null"
+        generation_task_id="null"
+      fi
+      set_prefill_progress "\${task_id}" "\${tokens_done}" "\${prefill_tokens_total}" "\${progress}"
     fi
-    set_prefill_progress "\${task_id}" "\${tokens_done}" "\${tokens_total}" "\${progress}"
-  elif [[ "\${line}" =~ slot[[:space:]]+update_slots:.*task[[:space:]]+([0-9]+).*prompt[[:space:]]+processing[[:space:]]+done ]]; then
-    if [[ "\${prefill_tokens_total}" != "null" ]]; then
-      set_prefill_progress "\${BASH_REMATCH[1]}" "\${prefill_tokens_total}" "\${prefill_tokens_total}" "1.0000"
+  elif [[ "\${semantic_line}" =~ slot[[:space:]]+(update_slots|print_timing):.*task[[:space:]]+([0-9]+).*prompt[[:space:]]+processing[[:space:]]+done ]]; then
+    task_id="\${BASH_REMATCH[2]}"
+    if [[ "\${prefill_phase}" == "prefill" && "\${prefill_task_id}" == "\${task_id}" ]]; then
+      if [[ "\${prefill_tokens_total}" != "null" ]]; then
+        set_prefill_progress "\${task_id}" "\${prefill_tokens_total}" "\${prefill_tokens_total}" "1.0000"
+      else
+        set_prefill_progress "\${task_id}" "\${prefill_tokens_done}" "null" "1.0000"
+      fi
     fi
-  elif [[ "\${line}" == *"slot      release:"* || "\${line}" == *"srv  update_slots: all slots are idle"* ]]; then
+  elif [[ "\${semantic_line}" =~ slot[[:space:]]+(update_slots|print_timing):.*task[[:space:]]+([0-9]+).*n_gen[[:space:]]*=[[:space:]]*[0-9]+ ]]; then
+    mark_generation "\${BASH_REMATCH[2]}"
+  elif [[ "\${semantic_line}" =~ slot[[:space:]]+release: ]] || [[ "\${semantic_line}" == *"all slots are idle"* ]]; then
     clear_prefill_progress
-  elif [[ "\${line}" =~ ([0-9]{1,3}([.][0-9]+)?)% && "\${load_progress}" != "1.0000" ]]; then
+    generation_task_id="null"
+  elif [[ "\${semantic_line}" =~ ([0-9]{1,3}([.][0-9]+)?)% && "\${load_progress}" != "1.0000" ]]; then
     pct="\${BASH_REMATCH[1]}"
     normalized="\$(normalize_progress "\${pct}")"
     set_load_progress "\${load_phase}" "\${normalized}"
@@ -254,7 +300,10 @@ done < "\${stderr_fifo}" &
 stderr_reader_pid="\$!"
 
 set +e
-"\${cmd[@]}" "\${extra_args[@]}" 2>"\${stderr_fifo}"
+if (( \${#extra_args[@]} > 0 )); then
+  cmd+=("\${extra_args[@]}")
+fi
+"\${cmd[@]}" 2>"\${stderr_fifo}"
 cmd_status="\$?"
 wait "\${stderr_reader_pid}" 2>/dev/null || true
 stderr_reader_pid=""
@@ -311,7 +360,7 @@ start_service() {
     launchctl bootstrap "${DOMAIN_TARGET}" "${PLIST_PATH}"
     launchctl enable "${DOMAIN_TARGET}/${RUNTIME_LABEL}" >/dev/null 2>&1 || true
   fi
-  launchctl kickstart -k "${DOMAIN_TARGET}/${RUNTIME_LABEL}" >/dev/null 2>&1 || true
+  launchctl kickstart -k "${DOMAIN_TARGET}/${RUNTIME_LABEL}" >/dev/null 2>&1
   echo "Started ${RUNTIME_ALIAS} via ${RUNTIME_LABEL}."
 }
 
